@@ -1,0 +1,182 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Production build
+build/
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# ESLint cache
+.eslintcache
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Temporary folders
+tmp/
+temp/
+
+# Backend specific (Python)
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.pyo
+
+# Python virtual environments
+venv/
+env/
+.venv/
+.conda/
+.anaconda/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VSCode and IDE settings
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database and backup files
+*.sqlite3
+*.db
+*.bak
+
+# Environment variables
+.env.*
+
+# Node modules
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/.cache/
+frontend/build/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and coverage
+htmlcov/
+.coverage
+.tox/
+.pytest_cache/
+
+# Uploads and temp files
+backend/uploads/
+backend/temp/
+backend/backups/
+
+# Compiled frontend files
+frontend/public/build/
+frontend/public/dist/
+
+# Ignore large model/data files
+*.npz
+*.pkl
+*.h5
+*.xml
+
+# Ignore personal or system files
+*.swp
+*.tmp
+*.bak
+
+# Ignore backup files
+*~
