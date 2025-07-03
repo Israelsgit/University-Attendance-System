@@ -1,507 +1,518 @@
+# backend/api/utils/helpers.py
 """
-Helper Functions and Utilities
+Helper utilities for University System
 """
 
 import re
-import uuid
 import hashlib
 import secrets
 import string
-from datetime import datetime, date, time, timedelta
-from typing import Optional, List, Dict, Any, Union
-from pathlib import Path
-import mimetypes
-import base64
-import json
+from datetime import datetime, date, timedelta
+from typing import List, Dict, Any, Optional, Union
+from config.settings import settings
+import logging
 
-def generate_employee_id(department: str = "GEN") -> str:
-    """Generate unique employee ID"""
-    timestamp = datetime.now().strftime("%y%m")
-    random_part = secrets.randbelow(999) + 1
-    return f"{department.upper()[:3]}{timestamp}{random_part:03d}"
+logger = logging.getLogger(__name__)
 
-def generate_secure_filename(original_filename: str) -> str:
-    """Generate secure filename for file uploads"""
-    # Get file extension
-    file_ext = Path(original_filename).suffix.lower()
-    
-    # Generate unique filename
-    unique_id = uuid.uuid4().hex[:12]
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    return f"{timestamp}_{unique_id}{file_ext}"
+def generate_id(prefix: str = "", length: int = 6) -> str:
+    """Generate a unique ID with optional prefix"""
+    numbers = ''.join(secrets.choice(string.digits) for _ in range(length))
+    return f"{prefix}{numbers}" if prefix else numbers
 
-def validate_email(email: str) -> bool:
-    """Validate email format"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+def generate_staff_id(department_code: str = "CSC") -> str:
+    """Generate staff ID in university format: BU/CSC/001"""
+    return f"{settings.UNIVERSITY_SHORT_NAME}/{department_code.upper()}/{generate_id('', 3)}"
 
-def validate_phone(phone: str) -> bool:
-    """Validate phone number format"""
-    # Remove all non-digit characters
-    digits_only = re.sub(r'\D', '', phone)
-    
-    # Check if it's a valid length (10-15 digits)
-    return 10 <= len(digits_only) <= 15
+def generate_student_id(department_code: str = "CSC", year: Optional[str] = None) -> str:
+    """Generate student ID in university format: BU/CSC/24/001"""
+    if not year:
+        year = str(datetime.now().year)[2:]  # Last 2 digits of current year
+    return f"{settings.UNIVERSITY_SHORT_NAME}/{department_code.upper()}/{year}/{generate_id('', 3)}"
 
-def format_phone(phone: str) -> str:
-    """Format phone number consistently"""
+def generate_matric_number() -> str:
+    """Generate matriculation number: 6 digits"""
+    return generate_id('', 6)
+
+def format_phone_number(phone: str) -> str:
+    """Format phone number to Nigerian standard"""
     if not phone:
-        return None
+        return ""
     
-    # Remove all non-digit characters
+    # Remove all non-digits
     digits_only = re.sub(r'\D', '', phone)
     
-    # Format as +1-XXX-XXX-XXXX for US numbers
-    if len(digits_only) == 10:
-        return f"+1-{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}"
-    elif len(digits_only) == 11 and digits_only.startswith('1'):
-        return f"+1-{digits_only[1:4]}-{digits_only[4:7]}-{digits_only[7:]}"
-    else:
-        # For international numbers, just add + and format with dashes
+    # Handle different input formats
+    if digits_only.startswith('234'):
         return f"+{digits_only}"
+    elif digits_only.startswith('0') and len(digits_only) == 11:
+        return f"+234{digits_only[1:]}"
+    elif len(digits_only) == 10:
+        return f"+234{digits_only}"
+    else:
+        return phone  # Return original if can't format
 
-def calculate_age(birth_date: date) -> int:
-    """Calculate age from birth date"""
+def validate_nigerian_phone(phone: str) -> bool:
+    """Validate Nigerian phone number"""
+    if not phone:
+        return False
+    
+    patterns = [
+        r'^\+234[789]\d{9}$',  # +234XXXXXXXXX
+        r'^0[789]\d{9}$',      # 0XXXXXXXXX  
+        r'^[789]\d{9}$'        # XXXXXXXXX
+    ]
+    return any(re.match(pattern, phone.strip()) for pattern in patterns)
+
+def calculate_age(date_of_birth: date) -> int:
+    """Calculate age from date of birth"""
+    if not date_of_birth:
+        return 0
+    
     today = date.today()
-    return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    return today.year - date_of_birth.year - ((today.month, today.day) < (date_of_birth.month, date_of_birth.day))
 
-def calculate_working_days(start_date: date, end_date: date, exclude_weekends: bool = True) -> int:
-    """Calculate working days between two dates"""
-    total_days = (end_date - start_date).days + 1
+def get_academic_year(input_date: Optional[date] = None) -> str:
+    """Get academic year for a given date"""
+    if not input_date:
+        input_date = date.today()
     
-    if not exclude_weekends:
-        return total_days
+    # Academic year typically starts in September
+    if input_date.month >= 9:
+        start_year = input_date.year
+        end_year = input_date.year + 1
+    else:
+        start_year = input_date.year - 1
+        end_year = input_date.year
     
-    working_days = 0
-    current_date = start_date
-    
-    while current_date <= end_date:
-        # Monday = 0, Sunday = 6
-        if current_date.weekday() < 5:  # Monday to Friday
-            working_days += 1
-        current_date += timedelta(days=1)
-    
-    return working_days
+    return f"{start_year}/{end_year}"
 
-def calculate_overtime_hours(check_in: time, check_out: time, standard_hours: float = 8.0) -> float:
-    """Calculate overtime hours"""
-    if not check_in or not check_out:
-        return 0.0
+def get_semester(input_date: Optional[date] = None) -> str:
+    """Determine current semester"""
+    if not input_date:
+        input_date = date.today()
     
-    # Convert to datetime for calculation
-    today = date.today()
-    checkin_dt = datetime.combine(today, check_in)
-    checkout_dt = datetime.combine(today, check_out)
+    month = input_date.month
     
-    # Handle overnight shifts
-    if checkout_dt < checkin_dt:
-        checkout_dt += timedelta(days=1)
-    
-    total_hours = (checkout_dt - checkin_dt).total_seconds() / 3600
-    return max(0, total_hours - standard_hours)
+    # First semester: September to January
+    if month >= 9 or month == 1:
+        return "First Semester"
+    # Second semester: February to June  
+    elif 2 <= month <= 6:
+        return "Second Semester"
+    # Rain semester: July to August
+    else:
+        return "Rain Semester"
 
-def time_to_decimal(time_obj: time) -> float:
-    """Convert time to decimal hours"""
-    if not time_obj:
-        return 0.0
-    return time_obj.hour + time_obj.minute / 60 + time_obj.second / 3600
-
-def decimal_to_time(decimal_hours: float) -> time:
-    """Convert decimal hours to time"""
-    hours = int(decimal_hours)
-    minutes = int((decimal_hours - hours) * 60)
-    seconds = int(((decimal_hours - hours) * 60 - minutes) * 60)
-    return time(hours, minutes, seconds)
-
-def get_file_size_mb(file_path: str) -> float:
-    """Get file size in MB"""
-    try:
-        size_bytes = Path(file_path).stat().st_size
-        return round(size_bytes / (1024 * 1024), 2)
-    except:
-        return 0.0
-
-def get_mime_type(filename: str) -> str:
-    """Get MIME type from filename"""
-    mime_type, _ = mimetypes.guess_type(filename)
-    return mime_type or 'application/octet-stream'
+def hash_file_content(content: bytes) -> str:
+    """Generate hash of file content"""
+    return hashlib.sha256(content).hexdigest()
 
 def sanitize_filename(filename: str) -> str:
-    """Sanitize filename by removing/replacing invalid characters"""
-    # Remove or replace invalid characters
-    sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    """Sanitize filename for safe storage"""
+    if not filename:
+        return "file"
     
-    # Remove leading/trailing dots and spaces
-    sanitized = sanitized.strip('. ')
+    # Remove or replace unsafe characters
+    safe_chars = re.sub(r'[^\w\-_\.]', '_', filename)
     
     # Limit length
-    if len(sanitized) > 255:
-        name, ext = Path(sanitized).stem, Path(sanitized).suffix
-        max_name_length = 255 - len(ext)
-        sanitized = name[:max_name_length] + ext
+    if len(safe_chars) > 100:
+        name, ext = safe_chars.rsplit('.', 1) if '.' in safe_chars else (safe_chars, '')
+        safe_chars = f"{name[:95]}.{ext}" if ext else name[:100]
     
-    return sanitized
-
-def hash_file(file_path: str) -> str:
-    """Generate SHA-256 hash of file"""
-    sha256_hash = hashlib.sha256()
-    try:
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(chunk)
-        return sha256_hash.hexdigest()
-    except:
-        return ""
-
-def generate_password(length: int = 12) -> str:
-    """Generate secure password"""
-    characters = string.ascii_letters + string.digits + "!@#$%^&*"
-    password = ''.join(secrets.choice(characters) for _ in range(length))
-    
-    # Ensure at least one character from each category
-    if not any(c.isupper() for c in password):
-        password = password[:-1] + secrets.choice(string.ascii_uppercase)
-    if not any(c.islower() for c in password):
-        password = password[:-1] + secrets.choice(string.ascii_lowercase)
-    if not any(c.isdigit() for c in password):
-        password = password[:-1] + secrets.choice(string.digits)
-    
-    return password
-
-def parse_date_string(date_string: str) -> Optional[date]:
-    """Parse date string in various formats"""
-    formats = [
-        "%Y-%m-%d",
-        "%d/%m/%Y",
-        "%m/%d/%Y",
-        "%d-%m-%Y",
-        "%m-%d-%Y",
-        "%Y/%m/%d"
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_string, fmt).date()
-        except ValueError:
-            continue
-    
-    return None
-
-def parse_time_string(time_string: str) -> Optional[time]:
-    """Parse time string in various formats"""
-    formats = [
-        "%H:%M",
-        "%H:%M:%S",
-        "%I:%M %p",
-        "%I:%M:%S %p"
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(time_string, fmt).time()
-        except ValueError:
-            continue
-    
-    return None
+    return safe_chars
 
 def format_duration(seconds: int) -> str:
     """Format duration in seconds to human readable format"""
-    if seconds < 60:
-        return f"{seconds} seconds"
-    elif seconds < 3600:
-        minutes = seconds // 60
-        return f"{minutes} minutes"
-    elif seconds < 86400:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        return f"{hours}h {minutes}m"
+    if seconds < 0:
+        return "0s"
+    
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        return f"{minutes}m {seconds}s"
     else:
-        days = seconds // 86400
-        hours = (seconds % 86400) // 3600
-        return f"{days}d {hours}h"
+        return f"{seconds}s"
 
-def truncate_string(text: str, max_length: int, suffix: str = "...") -> str:
-    """Truncate string to maximum length with suffix"""
-    if len(text) <= max_length:
-        return text
-    return text[:max_length - len(suffix)] + suffix
-
-def slugify(text: str) -> str:
-    """Convert text to URL-friendly slug"""
-    # Convert to lowercase
-    text = text.lower()
-    
-    # Replace spaces and special characters with hyphens
-    text = re.sub(r'[^\w\s-]', '', text)
-    text = re.sub(r'[-\s]+', '-', text)
-    
-    # Remove leading/trailing hyphens
-    return text.strip('-')
-
-def generate_api_key() -> str:
-    """Generate secure API key"""
-    return secrets.token_urlsafe(32)
-
-def encode_base64(data: Union[str, bytes]) -> str:
-    """Encode data to base64 string"""
-    if isinstance(data, str):
-        data = data.encode('utf-8')
-    return base64.b64encode(data).decode('utf-8')
-
-def decode_base64(encoded_data: str) -> bytes:
-    """Decode base64 string to bytes"""
-    return base64.b64decode(encoded_data)
-
-def deep_merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
-    """Deep merge two dictionaries"""
-    result = dict1.copy()
-    
-    for key, value in dict2.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge_dicts(result[key], value)
-        else:
-            result[key] = value
-    
-    return result
-
-def flatten_dict(d: Dict, parent_key: str = '', sep: str = '.') -> Dict:
-    """Flatten nested dictionary"""
-    items = []
-    for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-        if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-def is_working_day(check_date: date, exclude_weekends: bool = True) -> bool:
-    """Check if date is a working day"""
-    if exclude_weekends and check_date.weekday() >= 5:  # Saturday = 5, Sunday = 6
-        return False
-    
-    # Add holiday checking logic here if needed
-    # holidays = get_holidays(check_date.year)
-    # if check_date in holidays:
-    #     return False
-    
-    return True
-
-def get_week_range(target_date: date) -> tuple[date, date]:
-    """Get start and end date of the week containing target_date"""
-    days_since_monday = target_date.weekday()
-    week_start = target_date - timedelta(days=days_since_monday)
-    week_end = week_start + timedelta(days=6)
-    return week_start, week_end
-
-def get_month_range(target_date: date) -> tuple[date, date]:
-    """Get start and end date of the month containing target_date"""
-    month_start = target_date.replace(day=1)
-    
-    # Get last day of month
-    if target_date.month == 12:
-        next_month = target_date.replace(year=target_date.year + 1, month=1, day=1)
-    else:
-        next_month = target_date.replace(month=target_date.month + 1, day=1)
-    
-    month_end = next_month - timedelta(days=1)
-    return month_start, month_end
-
-def calculate_leave_days(start_date: date, end_date: date, exclude_weekends: bool = True) -> int:
-    """Calculate number of leave days between dates"""
-    return calculate_working_days(start_date, end_date, exclude_weekends)
-
-def validate_date_range(start_date: date, end_date: date, max_range_days: int = 365) -> bool:
-    """Validate date range"""
-    if start_date > end_date:
-        return False
-    
-    if (end_date - start_date).days > max_range_days:
-        return False
-    
-    return True
-
-def format_currency(amount: float, currency: str = "USD") -> str:
-    """Format amount as currency"""
-    if currency == "USD":
-        return f"${amount:,.2f}"
-    elif currency == "EUR":
-        return f"€{amount:,.2f}"
-    elif currency == "GBP":
-        return f"£{amount:,.2f}"
-    else:
-        return f"{amount:,.2f} {currency}"
-
-def calculate_percentage(part: float, total: float) -> float:
-    """Calculate percentage with division by zero protection"""
+def calculate_attendance_percentage(attended: int, total: int) -> float:
+    """Calculate attendance percentage"""
     if total == 0:
         return 0.0
-    return round((part / total) * 100, 2)
+    return round((attended / total) * 100, 2)
 
-def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
-    """Safe division with default value for division by zero"""
-    if denominator == 0:
-        return default
-    return numerator / denominator
+def get_attendance_status(percentage: float) -> str:
+    """Get attendance status based on percentage"""
+    if percentage >= settings.MINIMUM_ATTENDANCE_PERCENTAGE:
+        return "good"
+    elif percentage >= 60:
+        return "warning"
+    else:
+        return "poor"
 
-def chunk_list(lst: List, chunk_size: int) -> List[List]:
-    """Split list into chunks of specified size"""
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+def generate_attendance_summary(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate attendance summary from records"""
+    if not records:
+        return {
+            "total": 0,
+            "present": 0,
+            "late": 0,
+            "absent": 0,
+            "attended": 0,
+            "percentage": 0.0,
+            "status": "poor"
+        }
+    
+    total = len(records)
+    present = len([r for r in records if r.get('status') == 'present'])
+    late = len([r for r in records if r.get('status') == 'late'])
+    absent = len([r for r in records if r.get('status') == 'absent'])
+    
+    attended = present + late
+    percentage = calculate_attendance_percentage(attended, total)
+    
+    return {
+        "total": total,
+        "present": present,
+        "late": late,
+        "absent": absent,
+        "attended": attended,
+        "percentage": percentage,
+        "status": get_attendance_status(percentage)
+    }
 
-def remove_duplicates_preserve_order(lst: List) -> List:
-    """Remove duplicates from list while preserving order"""
-    seen = set()
-    return [x for x in lst if not (x in seen or seen.add(x))]
+def get_week_dates(input_date: Optional[date] = None) -> Dict[str, date]:
+    """Get start and end dates of week for given date"""
+    if not input_date:
+        input_date = date.today()
+    
+    # Monday as start of week
+    days_since_monday = input_date.weekday()
+    start_of_week = input_date - timedelta(days=days_since_monday)
+    end_of_week = start_of_week + timedelta(days=6)
+    
+    return {
+        "start": start_of_week,
+        "end": end_of_week
+    }
 
-def safe_json_loads(json_string: str, default: Any = None) -> Any:
-    """Safely parse JSON string with default fallback"""
-    try:
-        return json.loads(json_string)
-    except (json.JSONDecodeError, TypeError):
-        return default
+def get_month_dates(input_date: Optional[date] = None) -> Dict[str, date]:
+    """Get start and end dates of month for given date"""
+    if not input_date:
+        input_date = date.today()
+    
+    start_of_month = input_date.replace(day=1)
+    
+    # Get last day of month
+    if input_date.month == 12:
+        end_of_month = input_date.replace(year=input_date.year + 1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_of_month = input_date.replace(month=input_date.month + 1, day=1) - timedelta(days=1)
+    
+    return {
+        "start": start_of_month,
+        "end": end_of_month
+    }
 
-def safe_json_dumps(obj: Any, default: str = "{}") -> str:
-    """Safely serialize object to JSON with default fallback"""
-    try:
-        return json.dumps(obj, default=str)
-    except (TypeError, ValueError):
-        return default
+def paginate_results(items: List[Any], page: int = 1, size: int = 20) -> Dict[str, Any]:
+    """Paginate a list of items"""
+    total = len(items)
+    start = (page - 1) * size
+    end = start + size
+    
+    paginated_items = items[start:end]
+    total_pages = (total + size - 1) // size  # Ceiling division
+    
+    return {
+        "items": paginated_items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1
+    }
 
-def clean_text(text: str) -> str:
-    """Clean and normalize text"""
+def mask_sensitive_data(data: str, mask_char: str = "*", visible_chars: int = 4) -> str:
+    """Mask sensitive data showing only last few characters"""
+    if not data:
+        return ""
+    
+    if len(data) <= visible_chars:
+        return mask_char * len(data)
+    
+    masked_part = mask_char * (len(data) - visible_chars)
+    visible_part = data[-visible_chars:]
+    
+    return masked_part + visible_part
+
+def log_user_action(user_id: int, action: str, details: Optional[Dict[str, Any]] = None):
+    """Log user action for audit trail"""
+    log_data = {
+        "user_id": user_id,
+        "action": action,
+        "timestamp": datetime.now().isoformat(),
+        "details": details or {}
+    }
+    
+    logger.info(f"User action: {log_data}")
+
+def create_error_response(message: str, details: Optional[str] = None) -> Dict[str, Any]:
+    """Create standardized error response"""
+    return {
+        "success": False,
+        "error": message,
+        "details": details,
+        "timestamp": datetime.now().isoformat()
+    }
+
+def create_success_response(message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create standardized success response"""
+    return {
+        "success": True,
+        "message": message,
+        "data": data or {},
+        "timestamp": datetime.now().isoformat()
+    }
+
+def is_business_day(check_date: date) -> bool:
+    """Check if date is a business day (Monday-Friday)"""
+    return check_date.weekday() < 5
+
+def get_business_days_between(start_date: date, end_date: date) -> int:
+    """Get number of business days between two dates"""
+    if start_date > end_date:
+        return 0
+    
+    current = start_date
+    count = 0
+    
+    while current <= end_date:
+        if is_business_day(current):
+            count += 1
+        current += timedelta(days=1)
+    
+    return count
+
+def validate_course_code_format(course_code: str) -> bool:
+    """Validate course code format (e.g., CSC 438)"""
+    if not course_code:
+        return False
+    
+    pattern = r'^[A-Z]{2,4}\s\d{3,4}$'
+    return bool(re.match(pattern, course_code.upper()))
+
+def parse_course_code(course_code: str) -> Dict[str, str]:
+    """Parse course code into department and number"""
+    if not validate_course_code_format(course_code):
+        raise ValueError("Invalid course code format")
+    
+    parts = course_code.upper().split()
+    return {
+        "department": parts[0],
+        "number": parts[1],
+        "full_code": course_code.upper()
+    }
+
+def generate_backup_filename(prefix: str, extension: str = "sql") -> str:
+    """Generate backup filename with timestamp"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{prefix}_backup_{timestamp}.{extension}"
+
+def format_file_size(size_bytes: int) -> str:
+    """Format file size in bytes to human readable format"""
+    if size_bytes == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024.0 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    
+    return f"{size_bytes:.1f} {size_names[i]}"
+
+def truncate_text(text: str, max_length: int = 100, suffix: str = "...") -> str:
+    """Truncate text to maximum length with suffix"""
     if not text:
         return ""
     
-    # Remove extra whitespace
-    text = re.sub(r'\s+', ' ', text)
+    if len(text) <= max_length:
+        return text
     
-    # Remove leading/trailing whitespace
-    text = text.strip()
-    
-    return text
+    return text[:max_length - len(suffix)] + suffix
 
-def mask_sensitive_data(data: str, mask_char: str = "*", visible_chars: int = 4) -> str:
-    """Mask sensitive data like email, phone numbers"""
-    if not data or len(data) <= visible_chars:
+def get_client_ip(request) -> str:
+    """Get client IP address from request"""
+    # Try to get real IP from headers (in case of proxy)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    
+    # Fallback to client host
+    if hasattr(request, 'client') and request.client:
+        return request.client.host
+    
+    return "unknown"
+
+def validate_json_data(data: Any, required_fields: List[str]) -> tuple[bool, List[str]]:
+    """Validate JSON data has required fields"""
+    errors = []
+    
+    if not isinstance(data, dict):
+        errors.append("Data must be a JSON object")
+        return False, errors
+    
+    for field in required_fields:
+        if field not in data:
+            errors.append(f"Missing required field: {field}")
+        elif data[field] is None or (isinstance(data[field], str) and not data[field].strip()):
+            errors.append(f"Field '{field}' cannot be empty")
+    
+    return len(errors) == 0, errors
+
+def convert_to_timezone(dt: datetime, timezone_str: str = "UTC") -> datetime:
+    """Convert datetime to specified timezone"""
+    try:
+        import pytz
+        if dt.tzinfo is None:
+            # Assume UTC if no timezone info
+            dt = pytz.UTC.localize(dt)
+        
+        target_tz = pytz.timezone(timezone_str)
+        return dt.astimezone(target_tz)
+    except ImportError:
+        logger.warning("pytz not installed, returning original datetime")
+        return dt
+    except Exception as e:
+        logger.error(f"Error converting timezone: {e}")
+        return dt
+
+def clean_dict(data: Dict[str, Any], remove_none: bool = True, remove_empty: bool = True) -> Dict[str, Any]:
+    """Clean dictionary by removing None/empty values"""
+    if not isinstance(data, dict):
         return data
     
-    if "@" in data:  # Email
-        local, domain = data.split("@")
-        if len(local) <= visible_chars:
-            return data
-        masked_local = local[:2] + mask_char * (len(local) - 4) + local[-2:]
-        return f"{masked_local}@{domain}"
-    else:  # Phone or other
-        return data[:visible_chars] + mask_char * (len(data) - visible_chars)
-
-def generate_qr_code_data(user_id: int, timestamp: str = None) -> str:
-    """Generate QR code data for attendance"""
-    if not timestamp:
-        timestamp = datetime.now().isoformat()
+    cleaned = {}
+    for key, value in data.items():
+        if remove_none and value is None:
+            continue
+        if remove_empty and isinstance(value, str) and not value.strip():
+            continue
+        
+        # Recursively clean nested dictionaries
+        if isinstance(value, dict):
+            cleaned[key] = clean_dict(value, remove_none, remove_empty)
+        else:
+            cleaned[key] = value
     
-    data = {
-        "user_id": user_id,
-        "timestamp": timestamp,
-        "type": "attendance_checkin"
-    }
-    
-    return encode_base64(json.dumps(data))
+    return cleaned
 
-def validate_qr_code_data(qr_data: str, max_age_minutes: int = 5) -> Dict[str, Any]:
-    """Validate QR code data for attendance"""
+def generate_random_string(length: int = 32, include_symbols: bool = False) -> str:
+    """Generate random string for tokens, passwords, etc."""
+    characters = string.ascii_letters + string.digits
+    if include_symbols:
+        characters += "!@#$%^&*"
+    
+    return ''.join(secrets.choice(characters) for _ in range(length))
+
+def is_valid_uuid(uuid_string: str) -> bool:
+    """Check if string is a valid UUID"""
     try:
-        decoded_data = decode_base64(qr_data)
-        data = json.loads(decoded_data.decode('utf-8'))
-        
-        # Check required fields
-        required_fields = ["user_id", "timestamp", "type"]
-        if not all(field in data for field in required_fields):
-            return {"valid": False, "error": "Missing required fields"}
-        
-        # Check type
-        if data["type"] != "attendance_checkin":
-            return {"valid": False, "error": "Invalid QR code type"}
-        
-        # Check timestamp age
-        qr_timestamp = datetime.fromisoformat(data["timestamp"])
-        age_minutes = (datetime.now() - qr_timestamp).total_seconds() / 60
-        
-        if age_minutes > max_age_minutes:
-            return {"valid": False, "error": "QR code expired"}
-        
-        return {"valid": True, "data": data}
-        
-    except Exception as e:
-        return {"valid": False, "error": f"Invalid QR code: {str(e)}"}
+        import uuid
+        uuid.UUID(uuid_string)
+        return True
+    except (ValueError, TypeError):
+        return False
 
-class DateTimeHelper:
-    """Helper class for datetime operations"""
-    
-    @staticmethod
-    def get_current_time_string() -> str:
-        """Get current time as ISO string"""
-        return datetime.now().isoformat()
-    
-    @staticmethod
-    def get_today_date_string() -> str:
-        """Get today's date as ISO string"""
-        return date.today().isoformat()
-    
-    @staticmethod
-    def days_between(date1: date, date2: date) -> int:
-        """Calculate days between two dates"""
-        return abs((date2 - date1).days)
-    
-    @staticmethod
-    def is_future_date(check_date: date) -> bool:
-        """Check if date is in the future"""
-        return check_date > date.today()
-    
-    @staticmethod
-    def is_past_date(check_date: date) -> bool:
-        """Check if date is in the past"""
-        return check_date < date.today()
-    
-    @staticmethod
-    def add_business_days(start_date: date, business_days: int) -> date:
-        """Add business days to a date (excluding weekends)"""
-        current_date = start_date
-        days_added = 0
-        
-        while days_added < business_days:
-            current_date += timedelta(days=1)
-            if current_date.weekday() < 5:  # Monday to Friday
-                days_added += 1
-        
-        return current_date
+def merge_dicts(*dicts: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge multiple dictionaries"""
+    result = {}
+    for d in dicts:
+        if isinstance(d, dict):
+            result.update(d)
+    return result
 
-class FileHelper:
-    """Helper class for file operations"""
+def safe_int(value: Any, default: int = 0) -> int:
+    """Safely convert value to integer"""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """Safely convert value to float"""
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+def extract_numbers(text: str) -> List[int]:
+    """Extract all numbers from text"""
+    if not text:
+        return []
     
-    @staticmethod
-    def ensure_directory_exists(directory_path: str):
-        """Create directory if it doesn't exist"""
-        Path(directory_path).mkdir(parents=True, exist_ok=True)
+    numbers = re.findall(r'\d+', text)
+    return [int(num) for num in numbers]
+
+def slugify(text: str) -> str:
+    """Convert text to URL-friendly slug"""
+    if not text:
+        return ""
     
-    @staticmethod
-    def delete_file_if_exists(file_path: str) -> bool:
-        """Delete file if it exists"""
-        try:
-            Path(file_path).unlink()
-            return True
-        except FileNotFoundError:
-            return False
-        except Exception:
-            return False
+    # Convert to lowercase and replace spaces/special chars with hyphens
+    slug = re.sub(r'[^\w\s-]', '', text.lower())
+    slug = re.sub(r'[-\s]+', '-', slug)
+    return slug.strip('-')
+
+# University-specific helper functions
+
+def get_student_level_from_id(student_id: str) -> Optional[str]:
+    """Extract student level from student ID"""
+    try:
+        # Pattern: BU/CSC/18/001 - year 18 means started in 2018
+        parts = student_id.split('/')
+        if len(parts) >= 3:
+            year = parts[2]
+            current_year = datetime.now().year
+            
+            # Convert 2-digit year to 4-digit
+            if len(year) == 2:
+                year_int = int(year)
+                if year_int > 50:  # Assume 1900s
+                    full_year = 1900 + year_int
+                else:  # Assume 2000s
+                    full_year = 2000 + year_int
+            else:
+                full_year = int(year)
+            
+            # Calculate level based on years passed
+            years_passed = current_year - full_year
+            level = min(100 + (years_passed * 100), 500)
+            return str(level)
+    except (ValueError, IndexError):
+        pass
     
-    @staticmethod
-    def get_file_extension(filename: str) -> str:
-        """Get file extension"""
-        return Path(filename).suffix.lower()
+    return None
+
+def format_academic_session(year: int) -> str:
+    """Format academic session from year"""
+    return f"{year}/{year + 1}"
+
+def get_current_academic_session() -> str:
+    """Get current academic session"""
+    current_year = datetime.now().year
+    current_month = datetime.now().month
     
-    @staticmethod
-    def is_image_file(filename: str) -> bool:
-        """Check if file is an image"""
-        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-        return FileHelper.get_file_extension(filename) in image_extensions
+    # Academic year starts in September
+    if current_month >= 9:
+        return format_academic_session(current_year)
+    else:
+        return format_academic_session(current_year - 1)

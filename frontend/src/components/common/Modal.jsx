@@ -1,15 +1,14 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 const Modal = ({
   isOpen,
   onClose,
   title,
   children,
-  maxWidth = "lg",
-  showCloseButton = true,
-  closeOnOverlayClick = true,
-  className = "",
+  size = "medium",
+  className,
 }) => {
   useEffect(() => {
     if (isOpen) {
@@ -25,68 +24,58 @@ const Modal = ({
 
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
+    if (isOpen) {
+      document.addEventListener("keydown", handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const maxWidthClasses = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-    "2xl": "max-w-2xl",
-    "3xl": "max-w-3xl",
-    "4xl": "max-w-4xl",
-    "5xl": "max-w-5xl",
+  const sizeClasses = {
+    small: "max-w-md",
+    medium: "max-w-lg",
+    large: "max-w-2xl",
+    xlarge: "max-w-4xl",
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-        onClick={closeOnOverlayClick ? onClose : undefined}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div
-          className={`
-            relative w-full ${maxWidthClasses[maxWidth]} 
-            bg-white/10 backdrop-blur-xl rounded-2xl shadow-glass 
-            border border-white/20 transform transition-all
-            ${className}
-          `}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          {(title || showCloseButton) && (
-            <div className="flex items-center justify-between p-6 border-b border-white/20">
-              {title && (
-                <h3 className="text-xl font-semibold text-white">{title}</h3>
-              )}
-
-              {showCloseButton && (
-                <button
-                  onClick={onClose}
-                  className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Content */}
-          <div className="p-6">{children}</div>
+      <div
+        className={cn(
+          "relative w-full mx-4 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl",
+          sizeClasses[size],
+          className
+        )}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+          <h2 className="text-xl font-semibold text-white">{title}</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="h-6 w-6" />
+          </button>
         </div>
+
+        {/* Content */}
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );

@@ -1,660 +1,500 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   User,
   Mail,
-  Building,
-  IdCard,
+  Phone,
+  MapPin,
+  Calendar,
   Camera,
-  Edit3,
+  Edit,
   Save,
   X,
-  Lock,
-  Eye,
-  EyeOff,
-  Upload,
-  Calendar,
-  Clock,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
-import { useAttendance } from "../hooks/useAttendance";
 import Button from "../components/common/Button";
+import Card from "../components/common/Card";
 import Input from "../components/common/Input";
 import Modal from "../components/common/Modal";
-import { format } from "date-fns";
+import toast from "react-hot-toast";
 
 const Profile = () => {
-  const { user, updateProfile, uploadProfileImage, changePassword } = useAuth();
-  const { weeklyStats } = useAttendance();
-
+  const { user, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [profileData, setProfileData] = useState({
-    name: user?.name || "",
-    email: user?.email || "",
-    department: user?.department || "",
-    employeeId: user?.employeeId || "",
-    phone: user?.phone || "",
-    bio: user?.bio || "",
+  const [showFaceRegistration, setShowFaceRegistration] = useState(false);
+  const [formData, setFormData] = useState({
+    full_name: "",
+    phone: "",
+    address: "",
+    gender: "",
   });
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  });
-  const [errors, setErrors] = useState({});
-  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        full_name: user.full_name || "",
+        phone: user.phone || "",
+        address: user.address || "",
+        gender: user.gender || "",
+      });
+    }
+  }, [user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setProfileData((prev) => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
   };
 
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target;
-    setPasswordData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
-  };
-
-  const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        // 5MB limit
-        setErrors({ image: "Image must be less than 5MB" });
-        return;
-      }
-
-      if (!file.type.startsWith("image/")) {
-        setErrors({ image: "Please select a valid image file" });
-        return;
-      }
-
-      setSelectedImage(file);
-
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-
-      setErrors({});
-    }
-  };
-
-  const validateProfile = () => {
-    const newErrors = {};
-
-    if (!profileData.name.trim()) {
-      newErrors.name = "Name is required";
-    }
-
-    if (!profileData.email.trim()) {
-      newErrors.email = "Email is required";
-    } else if (!/\S+@\S+\.\S+/.test(profileData.email)) {
-      newErrors.email = "Email is invalid";
-    }
-
-    if (!profileData.department.trim()) {
-      newErrors.department = "Department is required";
-    }
-
-    if (!profileData.employeeId.trim()) {
-      newErrors.employeeId = "Employee ID is required";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const validatePassword = () => {
-    const newErrors = {};
-
-    if (!passwordData.currentPassword) {
-      newErrors.currentPassword = "Current password is required";
-    }
-
-    if (!passwordData.newPassword) {
-      newErrors.newPassword = "New password is required";
-    } else if (passwordData.newPassword.length < 6) {
-      newErrors.newPassword = "Password must be at least 6 characters";
-    }
-
-    if (!passwordData.confirmPassword) {
-      newErrors.confirmPassword = "Please confirm your new password";
-    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSaveProfile = async () => {
-    if (!validateProfile()) return;
-
-    setIsUpdating(true);
-    const result = await updateProfile(profileData);
-    if (result.success) {
+  const handleSave = async () => {
+    try {
+      await updateProfile(formData);
       setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } catch (error) {
+      toast.error("Failed to update profile");
     }
-    setIsUpdating(false);
   };
 
-  const handleCancelEdit = () => {
-    setProfileData({
-      name: user?.name || "",
-      email: user?.email || "",
-      department: user?.department || "",
-      employeeId: user?.employeeId || "",
-      phone: user?.phone || "",
-      bio: user?.bio || "",
+  const handleCancel = () => {
+    setFormData({
+      full_name: user.full_name || "",
+      phone: user.phone || "",
+      address: user.address || "",
+      gender: user.gender || "",
     });
     setIsEditing(false);
-    setErrors({});
   };
 
-  const handlePasswordSubmit = async () => {
-    if (!validatePassword()) return;
-
-    setIsUpdating(true);
-    const result = await changePassword(passwordData);
-    if (result.success) {
-      setShowPasswordModal(false);
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-    }
-    setIsUpdating(false);
-  };
-
-  const handleImageUpload = async () => {
-    if (!selectedImage) return;
-
-    setIsUpdating(true);
-    const result = await uploadProfileImage(selectedImage);
-    if (result.success) {
-      setShowImageModal(false);
-      setSelectedImage(null);
-      setImagePreview(null);
-    }
-    setIsUpdating(false);
-  };
-
-  const togglePasswordVisibility = (field) => {
-    setShowPasswords((prev) => ({
-      ...prev,
-      [field]: !prev[field],
-    }));
-  };
-
-  const profileStats = [
-    {
-      label: "Total Working Days",
-      value: weeklyStats?.totalDays || 0,
-      icon: Calendar,
-    },
-    {
-      label: "Average Hours/Day",
-      value: `${weeklyStats?.avgHours || 0}h`,
-      icon: Clock,
-    },
-    {
-      label: "This Month",
-      value: `${weeklyStats?.monthlyAttendance || 0}%`,
-      icon: Calendar,
-    },
-  ];
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Profile Settings
-          </h1>
-          <p className="text-gray-400">
-            Manage your account information and preferences
-          </p>
+          <h1 className="text-3xl font-bold text-white mb-2">Profile</h1>
+          <p className="text-gray-300">Manage your account information</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Profile Card */}
-          <div className="lg:col-span-1">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20 sticky top-6">
-              {/* Profile Image */}
-              <div className="text-center mb-6">
-                <div className="relative inline-block">
-                  <div className="h-32 w-32 rounded-full bg-gradient-to-r from-primary-500 to-purple-600 flex items-center justify-center overflow-hidden mx-auto">
-                    {user?.profileImage ? (
-                      <img
-                        src={user.profileImage}
-                        alt={user.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <User className="h-16 w-16 text-white" />
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setShowImageModal(true)}
-                    className="absolute bottom-0 right-0 h-10 w-10 bg-primary-600 rounded-full flex items-center justify-center text-white hover:bg-primary-700 transition-colors shadow-lg"
-                  >
-                    <Camera className="h-5 w-5" />
-                  </button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Profile Picture & Basic Info */}
+          <Card className="p-6">
+            <div className="text-center">
+              <div className="relative inline-block mb-4">
+                <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  {user.profile_image ? (
+                    <img
+                      src={user.profile_image}
+                      alt="Profile"
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-12 w-12 text-white" />
+                  )}
                 </div>
-                <h2 className="text-xl font-bold text-white mt-4">
-                  {user?.name}
-                </h2>
-                <p className="text-gray-400">{user?.department}</p>
-                <p className="text-sm text-gray-500">ID: {user?.employeeId}</p>
+                <button className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 rounded-full p-2 transition-colors">
+                  <Camera className="h-4 w-4 text-white" />
+                </button>
               </div>
 
-              {/* Profile Stats */}
-              <div className="space-y-4">
-                {profileStats.map((stat, index) => {
-                  const IconComponent = stat.icon;
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
-                    >
-                      <div className="flex items-center">
-                        <IconComponent className="h-5 w-5 text-primary-400 mr-3" />
-                        <span className="text-gray-300 text-sm">
-                          {stat.label}
-                        </span>
-                      </div>
-                      <span className="text-white font-semibold">
-                        {stat.value}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <h2 className="text-xl font-bold text-white mb-1">
+                {user.full_name}
+              </h2>
+              <p className="text-gray-400 text-sm mb-2">
+                {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+              </p>
+              <p className="text-gray-500 text-xs">
+                {user.student_id || user.staff_id || user.matric_number}
+              </p>
 
-              {/* Quick Actions */}
-              <div className="mt-6 space-y-3">
-                <Button
-                  onClick={() => setShowPasswordModal(true)}
-                  variant="secondary"
-                  fullWidth
-                  className="justify-center"
+              {/* Face Registration Status */}
+              <div className="mt-4 p-3 rounded-lg bg-gray-800/50">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  {user.is_face_registered ? (
+                    <Check className="h-4 w-4 text-green-400" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-yellow-400" />
+                  )}
+                  <span className="text-sm font-medium text-white">
+                    Face Registration
+                  </span>
+                </div>
+                <p
+                  className={`text-xs ${
+                    user.is_face_registered
+                      ? "text-green-400"
+                      : "text-yellow-400"
+                  }`}
                 >
-                  <Lock className="h-4 w-4 mr-2" />
-                  Change Password
-                </Button>
+                  {user.is_face_registered ? "Registered" : "Not Registered"}
+                </p>
+
+                {!user.is_face_registered && user.role === "student" && (
+                  <Button
+                    onClick={() => setShowFaceRegistration(true)}
+                    size="sm"
+                    className="mt-2 w-full"
+                    variant="primary"
+                  >
+                    Register Face
+                  </Button>
+                )}
               </div>
             </div>
-          </div>
+          </Card>
 
-          {/* Profile Form */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">
-                  Personal Information
-                </h3>
-                {!isEditing ? (
-                  <Button
-                    onClick={() => setIsEditing(true)}
-                    variant="secondary"
-                    size="small"
-                  >
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                ) : (
-                  <div className="flex space-x-3">
+          {/* Personal Information */}
+          <Card className="lg:col-span-2 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-white">
+                Personal Information
+              </h3>
+              <div className="flex gap-2">
+                {isEditing ? (
+                  <>
+                    <Button onClick={handleSave} size="sm" variant="success">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
+                    </Button>
                     <Button
-                      onClick={handleCancelEdit}
+                      onClick={handleCancel}
+                      size="sm"
                       variant="secondary"
-                      size="small"
                     >
                       <X className="h-4 w-4 mr-2" />
                       Cancel
                     </Button>
-                    <Button
-                      onClick={handleSaveProfile}
-                      variant="primary"
-                      size="small"
-                      loading={isUpdating}
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save
-                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    onClick={() => setIsEditing(true)}
+                    size="sm"
+                    variant="primary"
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Full Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Full Name
+                </label>
+                {isEditing ? (
+                  <Input
+                    name="full_name"
+                    value={formData.full_name}
+                    onChange={handleInputChange}
+                    placeholder="Enter your full name"
+                  />
+                ) : (
+                  <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                    {user.full_name}
+                  </p>
+                )}
+              </div>
+
+              {/* Email (Read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Email Address
+                </label>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-gray-400" />
+                  <p className="text-gray-400 bg-gray-800/30 p-3 rounded-lg flex-1">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Phone Number
+                </label>
+                {isEditing ? (
+                  <Input
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    placeholder="Enter your phone number"
+                    icon={Phone}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-gray-400" />
+                    <p className="text-white bg-gray-800/50 p-3 rounded-lg flex-1">
+                      {user.phone || "Not provided"}
+                    </p>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input
-                  label="Full Name"
-                  name="name"
-                  value={profileData.name}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  error={errors.name}
-                  icon={User}
-                />
+              {/* Gender */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Gender
+                </label>
+                {isEditing ? (
+                  <select
+                    name="gender"
+                    value={formData.gender}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                ) : (
+                  <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                    {user.gender || "Not specified"}
+                  </p>
+                )}
+              </div>
 
-                <Input
-                  label="Email Address"
-                  name="email"
-                  type="email"
-                  value={profileData.email}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  error={errors.email}
-                  icon={Mail}
-                />
+              {/* Address */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Address
+                </label>
+                {isEditing ? (
+                  <textarea
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    placeholder="Enter your address"
+                    rows="3"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400"
+                  />
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-gray-400 mt-3" />
+                    <p className="text-white bg-gray-800/50 p-3 rounded-lg flex-1">
+                      {user.address || "Not provided"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
 
-                <Input
-                  label="Employee ID"
-                  name="employeeId"
-                  value={profileData.employeeId}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  error={errors.employeeId}
-                  icon={IdCard}
-                />
+        {/* Academic/Professional Information */}
+        <Card className="mt-6 p-6">
+          <h3 className="text-lg font-semibold text-white mb-6">
+            {user.role === "student"
+              ? "Academic Information"
+              : "Professional Information"}
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                University
+              </label>
+              <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                {user.university}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                College
+              </label>
+              <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                {user.college}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Department
+              </label>
+              <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                {user.department}
+              </p>
+            </div>
+
+            {user.role === "student" && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Programme
+                  </label>
+                  <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                    {user.programme}
+                  </p>
+                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Department
+                    Level
                   </label>
-                  <div className="relative">
-                    <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <select
-                      name="department"
-                      value={profileData.department}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="w-full pl-10 pr-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="Engineering" className="bg-gray-800">
-                        Engineering
-                      </option>
-                      <option value="Marketing" className="bg-gray-800">
-                        Marketing
-                      </option>
-                      <option value="Sales" className="bg-gray-800">
-                        Sales
-                      </option>
-                      <option value="HR" className="bg-gray-800">
-                        Human Resources
-                      </option>
-                      <option value="Finance" className="bg-gray-800">
-                        Finance
-                      </option>
-                      <option value="Operations" className="bg-gray-800">
-                        Operations
-                      </option>
-                      <option value="IT" className="bg-gray-800">
-                        Information Technology
-                      </option>
-                    </select>
-                  </div>
-                  {errors.department && (
-                    <p className="mt-1 text-sm text-red-400">
-                      {errors.department}
-                    </p>
-                  )}
+                  <p className="text-white bg-gray-800/50 p-3 rounded-lg">
+                    {user.level} Level
+                  </p>
                 </div>
 
-                <Input
-                  label="Phone Number"
-                  name="phone"
-                  value={profileData.phone}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  placeholder="Enter your phone number"
-                />
+                {user.admission_date && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Admission Date
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <p className="text-white bg-gray-800/50 p-3 rounded-lg flex-1">
+                        {new Date(user.admission_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
-                <div className="md:col-span-2">
+            {(user.role === "lecturer" || user.role === "admin") &&
+              user.employment_date && (
+                <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Bio
+                    Employment Date
                   </label>
-                  <textarea
-                    name="bio"
-                    rows={4}
-                    value={profileData.bio}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    placeholder="Tell us about yourself..."
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed resize-none"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <p className="text-white bg-gray-800/50 p-3 rounded-lg flex-1">
+                      {new Date(user.employment_date).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
+          </div>
+        </Card>
 
-              {/* Account Information */}
-              <div className="mt-8 pt-8 border-t border-white/20">
-                <h4 className="text-lg font-semibold text-white mb-4">
-                  Account Information
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="p-4 bg-white/5 rounded-lg">
-                    <p className="text-sm text-gray-400">Member Since</p>
-                    <p className="text-white font-semibold">
-                      {user?.createdAt
-                        ? format(new Date(user.createdAt), "MMMM yyyy")
-                        : "N/A"}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-white/5 rounded-lg">
-                    <p className="text-sm text-gray-400">Last Login</p>
-                    <p className="text-white font-semibold">
-                      {user?.lastLogin
-                        ? format(new Date(user.lastLogin), "MMM dd, yyyy HH:mm")
-                        : "N/A"}
-                    </p>
-                  </div>
-                </div>
+        {/* Account Status */}
+        <Card className="mt-6 p-6">
+          <h3 className="text-lg font-semibold text-white mb-6">
+            Account Status
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+              <div
+                className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${
+                  user.is_active ? "bg-green-500/20" : "bg-red-500/20"
+                }`}
+              >
+                {user.is_active ? (
+                  <Check className="h-6 w-6 text-green-400" />
+                ) : (
+                  <X className="h-6 w-6 text-red-400" />
+                )}
               </div>
+              <p className="text-sm font-medium text-gray-300">
+                Account Status
+              </p>
+              <p
+                className={`text-lg font-bold ${
+                  user.is_active ? "text-green-400" : "text-red-400"
+                }`}
+              >
+                {user.is_active ? "Active" : "Inactive"}
+              </p>
+            </div>
+
+            <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+              <div
+                className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${
+                  user.is_verified ? "bg-blue-500/20" : "bg-yellow-500/20"
+                }`}
+              >
+                {user.is_verified ? (
+                  <Check className="h-6 w-6 text-blue-400" />
+                ) : (
+                  <AlertCircle className="h-6 w-6 text-yellow-400" />
+                )}
+              </div>
+              <p className="text-sm font-medium text-gray-300">
+                Verification Status
+              </p>
+              <p
+                className={`text-lg font-bold ${
+                  user.is_verified ? "text-blue-400" : "text-yellow-400"
+                }`}
+              >
+                {user.is_verified ? "Verified" : "Pending"}
+              </p>
+            </div>
+
+            <div className="text-center p-4 bg-gray-800/50 rounded-lg">
+              <div
+                className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 ${
+                  user.is_face_registered
+                    ? "bg-purple-500/20"
+                    : "bg-gray-500/20"
+                }`}
+              >
+                <Camera
+                  className={`h-6 w-6 ${
+                    user.is_face_registered
+                      ? "text-purple-400"
+                      : "text-gray-400"
+                  }`}
+                />
+              </div>
+              <p className="text-sm font-medium text-gray-300">
+                Face Registration
+              </p>
+              <p
+                className={`text-lg font-bold ${
+                  user.is_face_registered ? "text-purple-400" : "text-gray-400"
+                }`}
+              >
+                {user.is_face_registered ? "Registered" : "Not Registered"}
+              </p>
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
-      {/* Change Password Modal */}
-      <Modal
-        isOpen={showPasswordModal}
-        onClose={() => setShowPasswordModal(false)}
-        title="Change Password"
-        maxWidth="md"
-      >
-        <div className="space-y-6">
-          <div className="relative">
-            <Input
-              label="Current Password"
-              type={showPasswords.current ? "text" : "password"}
-              name="currentPassword"
-              value={passwordData.currentPassword}
-              onChange={handlePasswordChange}
-              error={errors.currentPassword}
-              placeholder="Enter your current password"
-            />
-            <button
-              type="button"
-              className="absolute right-3 top-9 text-gray-400 hover:text-white transition-colors"
-              onClick={() => togglePasswordVisibility("current")}
-            >
-              {showPasswords.current ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
-            </button>
-          </div>
-
-          <div className="relative">
-            <Input
-              label="New Password"
-              type={showPasswords.new ? "text" : "password"}
-              name="newPassword"
-              value={passwordData.newPassword}
-              onChange={handlePasswordChange}
-              error={errors.newPassword}
-              placeholder="Enter your new password"
-            />
-            <button
-              type="button"
-              className="absolute right-3 top-9 text-gray-400 hover:text-white transition-colors"
-              onClick={() => togglePasswordVisibility("new")}
-            >
-              {showPasswords.new ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
-            </button>
-          </div>
-
-          <div className="relative">
-            <Input
-              label="Confirm New Password"
-              type={showPasswords.confirm ? "text" : "password"}
-              name="confirmPassword"
-              value={passwordData.confirmPassword}
-              onChange={handlePasswordChange}
-              error={errors.confirmPassword}
-              placeholder="Confirm your new password"
-            />
-            <button
-              type="button"
-              className="absolute right-3 top-9 text-gray-400 hover:text-white transition-colors"
-              onClick={() => togglePasswordVisibility("confirm")}
-            >
-              {showPasswords.confirm ? (
-                <EyeOff className="h-5 w-5" />
-              ) : (
-                <Eye className="h-5 w-5" />
-              )}
-            </button>
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
+      {/* Face Registration Modal */}
+      {showFaceRegistration && (
+        <Modal
+          isOpen={showFaceRegistration}
+          onClose={() => setShowFaceRegistration(false)}
+          title="Face Registration"
+        >
+          <div className="text-center py-8">
+            <Camera className="h-16 w-16 text-blue-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Face Registration Required
+            </h3>
+            <p className="text-gray-300 mb-6">
+              Please visit your lecturer to register your face for attendance
+              marking. This process requires in-person verification.
+            </p>
             <Button
-              onClick={() => setShowPasswordModal(false)}
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handlePasswordSubmit}
+              onClick={() => setShowFaceRegistration(false)}
               variant="primary"
-              loading={isUpdating}
             >
-              Update Password
+              Understood
             </Button>
           </div>
-        </div>
-      </Modal>
-
-      {/* Profile Image Modal */}
-      <Modal
-        isOpen={showImageModal}
-        onClose={() => setShowImageModal(false)}
-        title="Update Profile Picture"
-        maxWidth="md"
-      >
-        <div className="space-y-6">
-          {/* Image Preview */}
-          <div className="text-center">
-            <div className="h-40 w-40 rounded-full bg-gradient-to-r from-primary-500 to-purple-600 flex items-center justify-center overflow-hidden mx-auto">
-              {imagePreview ? (
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="h-full w-full object-cover"
-                />
-              ) : user?.profileImage ? (
-                <img
-                  src={user.profileImage}
-                  alt={user.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <User className="h-20 w-20 text-white" />
-              )}
-            </div>
-          </div>
-
-          {/* File Upload */}
-          <div>
-            <label
-              htmlFor="profile-image-upload"
-              className="block w-full cursor-pointer border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-white/40 transition-colors"
-            >
-              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-300">Click to upload a new image</p>
-              <p className="text-sm text-gray-400 mt-1">PNG, JPG up to 5MB</p>
-            </label>
-            <input
-              id="profile-image-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
-            {errors.image && (
-              <p className="mt-2 text-sm text-red-400">{errors.image}</p>
-            )}
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <Button
-              onClick={() => {
-                setShowImageModal(false);
-                setSelectedImage(null);
-                setImagePreview(null);
-                setErrors({});
-              }}
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleImageUpload}
-              variant="primary"
-              loading={isUpdating}
-              disabled={!selectedImage}
-            >
-              Update Picture
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 };

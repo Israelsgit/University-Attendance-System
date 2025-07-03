@@ -8,15 +8,16 @@ import {
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./context/AuthContext";
 import { AttendanceProvider } from "./context/AttendanceContext";
+import { CourseProvider } from "./context/CourseContext";
 import { useAuth } from "./hooks/useAuth";
 
 // Pages
 import Login from "./pages/auth/Login";
-import Register from "./pages/auth/Register";
-import Dashboard from "./pages/Dashboard";
+import LecturerDashboard from "./pages/LecturerDashboard";
+import StudentDashboard from "./pages/StudentDashboard";
 import Profile from "./pages/Profile";
-import Attendance from "./pages/Attendance";
 import Analytics from "./pages/Analytics";
+import Register from "./pages/auth/Register";
 
 // Components
 import Navbar from "./components/common/Navbar";
@@ -37,7 +38,7 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route Component (redirect if authenticated)
+// Public Route Component
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -62,6 +63,21 @@ const Layout = ({ children }) => {
   );
 };
 
+// Role-based Dashboard Route
+const DashboardRoute = () => {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (user.role === "lecturer" || user.role === "admin") {
+    return <LecturerDashboard />;
+  } else if (user.role === "student") {
+    return <StudentDashboard />;
+  } else {
+    return <Navigate to="/login" replace />;
+  }
+};
+
 // Main App Component
 function AppContent() {
   return (
@@ -77,6 +93,7 @@ function AppContent() {
               </PublicRoute>
             }
           />
+
           <Route
             path="/register"
             element={
@@ -92,11 +109,12 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <Dashboard />
+                  <DashboardRoute />
                 </Layout>
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/profile"
             element={
@@ -107,16 +125,7 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/attendance"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Attendance />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
+
           <Route
             path="/analytics"
             element={
@@ -151,7 +160,6 @@ function AppContent() {
           />
         </Routes>
 
-        {/* Toast Notifications */}
         <Toaster
           position="top-right"
           toastOptions={{
@@ -174,7 +182,9 @@ function App() {
   return (
     <AuthProvider>
       <AttendanceProvider>
-        <AppContent />
+        <CourseProvider>
+          <AppContent />
+        </CourseProvider>
       </AttendanceProvider>
     </AuthProvider>
   );

@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, LogIn, Scan } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  LogIn,
+  GraduationCap,
+  UserCheck,
+  Users,
+} from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import Button from "../../components/common/Button";
 import Input from "../../components/common/Input";
@@ -9,8 +16,9 @@ const Login = () => {
   const { login, isAuthenticating } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    email: "",
+    email: "", // Now always email for backend
     password: "",
+    userType: "student", // Used for user_type in backend
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
@@ -33,10 +41,10 @@ const Login = () => {
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.email) {
+    if (!formData.email.trim()) {
       newErrors.email = "Email is required";
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = "Email is invalid";
+      newErrors.email = "Please enter a valid email address";
     }
 
     if (!formData.password) {
@@ -54,7 +62,13 @@ const Login = () => {
 
     if (!validateForm()) return;
 
-    const result = await login(formData);
+    const loginData = {
+      email: formData.email.trim(),
+      password: formData.password,
+      user_type: formData.userType,
+    };
+
+    const result = await login(loginData);
     if (result.success) {
       setTimeout(() => {
         navigate("/dashboard");
@@ -62,30 +76,92 @@ const Login = () => {
     }
   };
 
+  const getPlaceholderText = () => {
+    return "Email address (e.g., yourname@student.bowen.edu.ng)";
+  };
+
+  const getIdentifierLabel = () => {
+    return "Email Address";
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto h-20 w-20 bg-gradient-to-r from-primary-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
-            <Scan className="h-10 w-10 text-white" />
+          <div className="mx-auto h-20 w-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
+            <GraduationCap className="h-10 w-10 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-          <p className="text-gray-400">Sign in to your attendance account</p>
+          <p className="text-gray-300">Bowen University Attendance System</p>
+          <p className="text-sm text-gray-400 mt-2">
+            Sign in to access your account
+          </p>
         </div>
 
         {/* Login Form */}
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-glass border border-white/20 p-8">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* User Type Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-3">
+                Account Type
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData((prev) => ({ ...prev, userType: "student" }))
+                  }
+                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                    formData.userType === "student"
+                      ? "border-green-500 bg-green-500/20 text-white"
+                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
+                  }`}
+                >
+                  <Users className="h-4 w-4 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Student</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData((prev) => ({ ...prev, userType: "lecturer" }))
+                  }
+                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                    formData.userType === "lecturer"
+                      ? "border-blue-500 bg-blue-500/20 text-white"
+                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
+                  }`}
+                >
+                  <UserCheck className="h-4 w-4 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Lecturer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData((prev) => ({ ...prev, userType: "admin" }))
+                  }
+                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                    formData.userType === "admin"
+                      ? "border-purple-500 bg-purple-500/20 text-white"
+                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
+                  }`}
+                >
+                  <GraduationCap className="h-4 w-4 mx-auto mb-1" />
+                  <span className="text-xs font-medium">Admin</span>
+                </button>
+              </div>
+            </div>
+
             <div>
               <Input
-                label="Email Address"
+                label={getIdentifierLabel()}
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
                 error={errors.email}
-                placeholder="Enter your email"
+                placeholder={getPlaceholderText()}
                 required
               />
             </div>
@@ -122,7 +198,7 @@ const Login = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded bg-white/10 border-white/20"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded bg-white/10 border-white/20"
                 />
                 <label
                   htmlFor="remember-me"
@@ -135,7 +211,7 @@ const Login = () => {
               <div className="text-sm">
                 <a
                   href="#"
-                  className="font-medium text-primary-400 hover:text-primary-300 transition-colors"
+                  className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
                 >
                   Forgot password?
                 </a>
@@ -148,89 +224,66 @@ const Login = () => {
               size="large"
               fullWidth
               loading={isAuthenticating}
-              className="group"
+              className="group bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              <LogIn className="h-5 w-5 mr-2 group-hover:translate-x-1 transition-transform" />
+              <LogIn className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform" />
               Sign In
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/20" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-transparent text-gray-400">
-                  Or continue with
-                </span>
-              </div>
+          {/* User Type Info */}
+          <div className="mt-6 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+            <div className="text-xs text-blue-200">
+              {formData.userType === "student" && (
+                <div>
+                  <strong>Students:</strong> Access your attendance records and
+                  class schedules.
+                  <br />
+                  Use your matric number (e.g., BU/CSC/21/0001) or university
+                  email.
+                </div>
+              )}
+              {formData.userType === "lecturer" && (
+                <div>
+                  <strong>Lecturers:</strong> Manage class attendance and
+                  student records.
+                  <br />
+                  Use your staff ID (e.g., BU/CSC/2024) or university email.
+                </div>
+              )}
+              {formData.userType === "admin" && (
+                <div>
+                  <strong>Administrators:</strong> System-wide management and
+                  analytics.
+                  <br />
+                  Use your admin credentials to access all system features.
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Social Login */}
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              className="w-full inline-flex justify-center py-2 px-4 border border-white/20 rounded-lg shadow-sm bg-white/5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              <span className="ml-2">Google</span>
-            </button>
+          {/* Register link - Only show for students */}
+          {formData.userType === "student" && (
+            <p className="mt-6 text-center text-sm text-gray-400">
+              New student at Bowen University?{" "}
+              <Link
+                to="/register"
+                className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Register here
+              </Link>
+            </p>
+          )}
 
-            <button
-              type="button"
-              className="w-full inline-flex justify-center py-2 px-4 border border-white/20 rounded-lg shadow-sm bg-white/5 text-sm font-medium text-gray-300 hover:bg-white/10 transition-colors"
-            >
-              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" />
-              </svg>
-              <span className="ml-2">Twitter</span>
-            </button>
-          </div>
-
-          {/* Sign up link */}
-          <p className="mt-6 text-center text-sm text-gray-400">
-            Don't have an account?{" "}
-            <Link
-              to="/register"
-              className="font-medium text-primary-400 hover:text-primary-300 transition-colors"
-            >
-              Sign up now
-            </Link>
-          </p>
-        </div>
-
-        {/* Footer */}
-        <div className="text-center">
-          <p className="text-xs text-gray-500">
-            By signing in, you agree to our{" "}
-            <a href="#" className="text-primary-400 hover:text-primary-300">
-              Terms
-            </a>{" "}
-            and{" "}
-            <a href="#" className="text-primary-400 hover:text-primary-300">
-              Privacy Policy
-            </a>
-          </p>
+          {/* Note for staff */}
+          {(formData.userType === "lecturer" ||
+            formData.userType === "admin") && (
+            <p className="mt-6 text-center text-xs text-gray-500">
+              Staff accounts are created by the IT department.
+              <br />
+              Contact admin if you need assistance.
+            </p>
+          )}
         </div>
       </div>
     </div>

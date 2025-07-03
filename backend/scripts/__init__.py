@@ -1,10 +1,6 @@
 """
 Scripts Package
-Contains utility scripts for database management and maintenance
+Contains utility scripts for database management and administration
 """
 
-# backend/tests/__init__.py
-"""
-Tests Package
-Contains test files and test utilities
-"""
+# This is an empty __init__.py file as scripts are meant to be run directly

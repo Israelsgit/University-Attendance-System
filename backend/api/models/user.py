@@ -1,173 +1,122 @@
 """
-User Database Model
+Enhanced User Model for University Attendance System
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Float, ForeignKey, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from config.database import Base
 from datetime import datetime
 from typing import Optional
+import enum
+
+class UserRole(enum.Enum):
+    LECTURER = "lecturer"
+    STUDENT = "student"
+    ADMIN = "admin"
+    HOD = "hod"  # Head of Department
+
+class StudentLevel(enum.Enum):
+    LEVEL_100 = "100"
+    LEVEL_200 = "200"
+    LEVEL_300 = "300"
+    LEVEL_400 = "400"
+    LEVEL_500 = "500"
 
 class User(Base):
-    """User model for authentication and profile management"""
+    """Enhanced User model for university system"""
     
     __tablename__ = "users"
     
     # Primary Fields
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), nullable=False, index=True)
+    full_name = Column(String(100), nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    employee_id = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     
+    # University-specific fields
+    staff_id = Column(String(50), unique=True, nullable=True, index=True)  # For lecturers
+    matric_number = Column(String(50), unique=True, nullable=True, index=True)  # For students
+    
+    # Academic Information
+    university = Column(String(100), nullable=False, default="Bowen University", index=True)
+    college = Column(String(100), nullable=False, index=True)  # e.g., "College of Information Technology"
+    department = Column(String(100), nullable=False, index=True)  # e.g., "Computer Science"
+    programme = Column(String(100), nullable=True, index=True)  # e.g., "Computer Science"
+    level = Column(Enum(StudentLevel), nullable=True, index=True)  # For students only
+    
     # Profile Information
-    department = Column(String(100), nullable=False, index=True)
-    position = Column(String(100), nullable=True)
     phone = Column(String(20), nullable=True)
-    bio = Column(Text, nullable=True)
+    gender = Column(String(10), nullable=True)
+    date_of_birth = Column(DateTime, nullable=True)
+    address = Column(Text, nullable=True)
     profile_image = Column(String(255), nullable=True)
     
     # Face Recognition Data
     face_encoding = Column(Text, nullable=True)  # Stored as JSON string
     face_image_path = Column(String(255), nullable=True)
     face_confidence_threshold = Column(Float, default=0.8)
+    is_face_registered = Column(Boolean, default=False)
     
-    # Status and Permissions
+    # Role and Permissions
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.STUDENT)
     is_active = Column(Boolean, default=True, index=True)
     is_verified = Column(Boolean, default=False)
-    is_admin = Column(Boolean, default=False)
-    role = Column(String(50), default="employee")  # employee, manager, hr, admin
     
-    # Work Information
-    work_schedule = Column(String(50), default="full_time")  # full_time, part_time, contract
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
-    manager_id = Column(Integer, nullable=True)
+    # Academic dates
+    admission_date = Column(DateTime, nullable=True)  # For students
+    employment_date = Column(DateTime, nullable=True)  # For lecturers
+    graduation_date = Column(DateTime, nullable=True)  # For graduated students
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    last_password_change = Column(DateTime(timezone=True), nullable=True)
-    
-    # Settings
-    timezone = Column(String(50), default="UTC")
-    language = Column(String(10), default="en")
-    notification_settings = Column(Text, nullable=True)  # JSON string
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_login = Column(DateTime, nullable=True)
     
     # Relationships
-    attendance_records = relationship("AttendanceRecord", back_populates="user")
-    leave_requests = relationship(
-        "LeaveRequest",
-        back_populates="user",
-        foreign_keys="[LeaveRequest.user_id]"
-    )
+    taught_classes = relationship("Course", back_populates="lecturer", foreign_keys="Course.lecturer_id")
+    enrolled_classes = relationship("Enrollment", back_populates="student")
+    attendance_records = relationship("AttendanceRecord", back_populates="student", foreign_keys="[AttendanceRecord.student_id]")
     
     def __repr__(self):
-        return f"<User(id={self.id}, name='{self.name}', email='{self.email}')>"
+        return f"<User(id={self.id}, name='{self.full_name}', role='{self.role}')>"
     
-    def to_dict(self, include_sensitive: bool = False):
-        """Convert user to dictionary"""
-        data = {
+    def to_dict(self):
+        return {
             "id": self.id,
-            "name": self.name,
+            "full_name": self.full_name,
             "email": self.email,
-            "employee_id": self.employee_id,
+            "staff_id": self.staff_id,
+            "matric_number": self.matric_number,
+            "university": self.university,
+            "college": self.college,
             "department": self.department,
-            "position": self.position,
+            "programme": self.programme,
+            "level": self.level.value if self.level else None,
             "phone": self.phone,
-            "bio": self.bio,
+            "gender": self.gender,
             "profile_image": self.profile_image,
+            "role": self.role.value,
             "is_active": self.is_active,
             "is_verified": self.is_verified,
-            "role": self.role,
-            "work_schedule": self.work_schedule,
-            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "is_face_registered": self.is_face_registered,
+            "admission_date": self.admission_date.isoformat() if self.admission_date else None,
+            "employment_date": self.employment_date.isoformat() if self.employment_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
-            "timezone": self.timezone,
-            "language": self.language,
         }
-        
-        if include_sensitive:
-            data.update({
-                "is_admin": self.is_admin,
-                "face_confidence_threshold": self.face_confidence_threshold,
-                "manager_id": self.manager_id,
-            })
-        
-        return data
     
-    def can_access_user(self, target_user_id: int) -> bool:
-        """Check if user can access another user's data"""
-        if self.is_admin:
-            return True
-        if self.id == target_user_id:
-            return True
-        if self.role in ["manager", "hr"] and self.department:
-            # Managers can access users in their department
-            return True
-        return False
+    def can_manage_classes(self):
+        """Check if user can manage classes (lecturers and admins)"""
+        return self.role in [UserRole.LECTURER, UserRole.ADMIN, UserRole.HOD]
     
-    def can_manage_attendance(self) -> bool:
-        """Check if user can manage attendance records"""
-        return self.role in ["admin", "hr", "manager"] or self.is_admin
+    def can_view_analytics(self):
+        """Check if user can view detailed analytics"""
+        return self.role in [UserRole.LECTURER, UserRole.ADMIN, UserRole.HOD]
     
-    def get_permissions(self) -> list:
-        """Get user permissions based on role"""
-        base_permissions = ["read_own_profile", "update_own_profile", "read_own_attendance"]
-        
-        if self.role == "admin" or self.is_admin:
-            return base_permissions + [
-                "manage_users", "manage_attendance", "manage_system", 
-                "view_analytics", "export_data", "manage_leaves"
-            ]
-        elif self.role == "hr":
-            return base_permissions + [
-                "manage_users", "manage_attendance", "view_analytics", 
-                "export_data", "manage_leaves"
-            ]
-        elif self.role == "manager":
-            return base_permissions + [
-                "view_team_attendance", "approve_leaves", "view_team_analytics"
-            ]
+    def get_identifier(self):
+        """Get the appropriate identifier based on role"""
+        if self.role == UserRole.STUDENT:
+            return self.matric_number
         else:
-            return base_permissions + ["request_leave"]
-
-class UserSession(Base):
-    """User session tracking"""
-    
-    __tablename__ = "user_sessions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    token_id = Column(String(255), unique=True, nullable=False, index=True)
-    refresh_token = Column(String(255), nullable=True)
-    device_info = Column(Text, nullable=True)  # JSON string
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_activity = Column(DateTime(timezone=True), server_default=func.now())
-    
-    def __repr__(self):
-        return f"<UserSession(id={self.id}, user_id={self.user_id}, active={self.is_active})>"
-
-class UserPreference(Base):
-    """User preferences and settings"""
-    
-    __tablename__ = "user_preferences"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    key = Column(String(100), nullable=False, index=True)
-    value = Column(Text, nullable=True)
-    data_type = Column(String(20), default="string")  # string, json, boolean, integer
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    def __repr__(self):
-        return f"<UserPreference(user_id={self.user_id}, key='{self.key}')>"
+            return self.staff_id

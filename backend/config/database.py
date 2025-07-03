@@ -1,26 +1,60 @@
 """
-Database Configuration and Connection
+Enhanced Database Configuration and Connection for University System
 """
 
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, event, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from config.settings import settings
+from sqlalchemy.pool import StaticPool
 import logging
+import os
+from pathlib import Path
+from config.settings import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Database engine configuration
+engine_kwargs = {
+    "echo": settings.DB_ECHO,
+    "pool_pre_ping": True,
+    "pool_recycle": 3600,
+}
+
+# SQLite specific configuration
+if "sqlite" in settings.DATABASE_URL:
+    engine_kwargs.update({
+        "connect_args": {
+            "check_same_thread": False,
+            "timeout": 60
+        },
+        "poolclass": StaticPool,
+    })
+# PostgreSQL specific configuration
+elif "postgresql" in settings.DATABASE_URL:
+    engine_kwargs.update({
+        "connect_args": {
+            "connect_timeout": 60,
+            "options": "-c timezone=UTC"
+        }
+    })
+
 # Create database engine
-engine = create_engine(
-    settings.DATABASE_URL,
-    echo=settings.DB_ECHO,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
-)
+try:
+    engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+    logger.info(f"Database engine created: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'Local DB'}")
+except Exception as e:
+    logger.error(f"Failed to create database engine: {e}")
+    raise
 
 # Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False
+)
 
 # Create base class for models
 Base = declarative_base()
@@ -30,11 +64,15 @@ metadata = MetaData()
 
 def get_db() -> Session:
     """
-    Dependency to get database session
+    Dependency to get database session with proper cleanup
     """
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        logger.error(f"Database session error: {e}")
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -43,12 +81,34 @@ def create_tables():
     Create all database tables
     """
     try:
-        # Import models to register them
-        from api.models import user, attendance, leave_request
+        logger.info("Importing database models...")
+        
+        # Import all models to register them with SQLAlchemy
+        from api.models import user, course, enrollment, class_session, attendance
+        
+        logger.info("Creating database tables...")
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
+        
         logger.info("✅ Database tables created successfully")
+        
+        # Verify tables were created
+        try:
+            with engine.connect() as conn:
+                if "sqlite" in settings.DATABASE_URL:
+                    result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table';"))
+                    tables = [row[0] for row in result]
+                elif "postgresql" in settings.DATABASE_URL:
+                    result = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public';"))
+                    tables = [row[0] for row in result]
+                else:
+                    tables = ["Tables verification not available"]
+                
+                logger.info(f"Created tables: {', '.join(tables)}")
+        except Exception as e:
+            logger.warning(f"Could not verify tables: {e}")
+            
     except Exception as e:
         logger.error(f"❌ Error creating database tables: {e}")
         raise
@@ -58,6 +118,7 @@ def drop_tables():
     Drop all database tables (use with caution!)
     """
     try:
+        logger.warning("⚠️ Dropping all database tables...")
         Base.metadata.drop_all(bind=engine)
         logger.info("✅ Database tables dropped successfully")
     except Exception as e:
@@ -66,106 +127,152 @@ def drop_tables():
 
 def init_database():
     """
-    Initialize database with default data
+    Initialize database with default admin user
     """
     try:
-        from api.models.user import User
+        from api.models.user import User, UserRole
         from api.utils.security import get_password_hash
+        from datetime import datetime
         
         db = SessionLocal()
         
-        # Check if admin user exists
-        admin_user = db.query(User).filter(User.email == "admin@attendanceai.com").first()
-        
-        if not admin_user:
-            # Create default admin user
-            admin_user = User(
-                name="System Administrator",
-                email="admin@attendanceai.com",
-                employee_id="ADMIN001",
-                department="IT",
-                hashed_password=get_password_hash("admin123"),
-                is_active=True,
-                is_admin=True,
-                role="admin"
-            )
-            db.add(admin_user)
-            db.commit()
-            logger.info("✅ Default admin user created")
-        
-        db.close()
+        try:
+            # Check if any users exist
+            user_count = db.query(User).count()
+            
+            if user_count == 0:
+                logger.info("Creating default admin user...")
+                
+                # Create default admin user
+                admin_user = User(
+                    full_name="System Administrator",
+                    email="admin@bowen.edu.ng",
+                    staff_id="ADMIN001",
+                    hashed_password=get_password_hash("admin123"),
+                    university=settings.UNIVERSITY_NAME,
+                    college="Administration",
+                    department="Information Technology",
+                    role=UserRole.ADMIN,
+                    employment_date=datetime.now(),
+                    is_active=True,
+                    is_verified=True,
+                    is_face_registered=True
+                )
+                
+                db.add(admin_user)
+                db.commit()
+                
+                logger.info("✅ Default admin user created successfully")
+                logger.info("📧 Admin login: admin@bowen.edu.ng / admin123")
+            else:
+                logger.info(f"ℹ️ Database already has {user_count} users")
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating admin user: {e}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
         
     except Exception as e:
-        logger.error(f"❌ Error initializing database: {e}")
+        logger.error(f"❌ Database initialization failed: {e}")
         raise
 
-# Database utilities
-class DatabaseManager:
-    """Database management utilities"""
-    
-    @staticmethod
-    def backup_database(backup_path: str = None):
-        """Backup database"""
-        if backup_path is None:
-            from datetime import datetime
-            backup_path = f"backups/backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-        
-        try:
-            import shutil
-            if "sqlite" in settings.DATABASE_URL:
-                db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-                shutil.copy2(db_path, backup_path)
-                logger.info(f"✅ Database backed up to {backup_path}")
-            else:
-                logger.warning("⚠️ Database backup only supported for SQLite")
-        except Exception as e:
-            logger.error(f"❌ Error backing up database: {e}")
-            raise
-    
-    @staticmethod
-    def restore_database(backup_path: str):
-        """Restore database from backup"""
-        try:
-            import shutil
-            if "sqlite" in settings.DATABASE_URL:
-                db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-                shutil.copy2(backup_path, db_path)
-                logger.info(f"✅ Database restored from {backup_path}")
-            else:
-                logger.warning("⚠️ Database restore only supported for SQLite")
-        except Exception as e:
-            logger.error(f"❌ Error restoring database: {e}")
-            raise
-    
-    @staticmethod
-    def get_db_stats():
-        """Get database statistics"""
-        try:
-            db = SessionLocal()
-            from api.models.user import User
-            from api.models.attendance import AttendanceRecord
-            from api.models.leave_request import LeaveRequest
-            
-            stats = {
-                "users": db.query(User).count(),
-                "attendance_records": db.query(AttendanceRecord).count(),
-                "leave_requests": db.query(LeaveRequest).count(),
-            }
-            
-            db.close()
-            return stats
-        except Exception as e:
-            logger.error(f"❌ Error getting database stats: {e}")
-            return {}
+def check_database_connection() -> bool:
+    """
+    Check if database connection is working
+    """
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        logger.info("✅ Database connection successful")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        return False
 
-# Export commonly used items
-__all__ = [
-    "engine",
-    "SessionLocal", 
-    "Base",
-    "get_db",
-    "create_tables",
-    "drop_tables",
-    "init_database",
-    "DatabaseManager"
-]
+def get_database_info() -> dict:
+    """
+    Get database information
+    """
+    try:
+        with engine.connect() as connection:
+            # Get database version
+            if "postgresql" in settings.DATABASE_URL:
+                result = connection.execute(text("SELECT version()"))
+                version = result.scalar()
+            elif "sqlite" in settings.DATABASE_URL:
+                result = connection.execute(text("SELECT sqlite_version()"))
+                version = f"SQLite {result.scalar()}"
+            else:
+                version = "Unknown"
+                
+            # Get table count
+            if "sqlite" in settings.DATABASE_URL:
+                result = connection.execute(text("SELECT COUNT(*) FROM sqlite_master WHERE type='table'"))
+                table_count = result.scalar()
+            elif "postgresql" in settings.DATABASE_URL:
+                result = connection.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'"))
+                table_count = result.scalar()
+            else:
+                table_count = 0
+                
+            return {
+                "url": settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else settings.DATABASE_URL,
+                "version": version,
+                "echo": settings.DB_ECHO,
+                "table_count": table_count,
+                "connection_pool_size": engine.pool.size() if hasattr(engine.pool, 'size') else 'N/A'
+            }
+    except Exception as e:
+        logger.error(f"Error getting database info: {e}")
+        return {"error": str(e)}
+
+def ensure_directories():
+    """Ensure required directories exist"""
+    directories = [
+        "uploads/faces",
+        "uploads/documents",
+        "models",
+        "logs",
+        "templates/email",
+        "backups"
+    ]
+    
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Directory ensured: {directory}")
+
+def reset_database():
+    """Reset database completely (for development only)"""
+    if settings.ENVIRONMENT == "production":
+        raise Exception("Cannot reset database in production environment")
+    
+    logger.warning("⚠️ Resetting database...")
+    drop_tables()
+    create_tables()
+    init_database()
+    logger.info("✅ Database reset completed")
+
+# Database event listeners
+@event.listens_for(engine, "connect")
+def receive_connect(dbapi_connection, connection_record):
+    """Configure database connection on connect"""
+    if "sqlite" in settings.DATABASE_URL:
+        # Enable foreign keys for SQLite
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    logger.debug("Database connection established and configured")
+
+@event.listens_for(engine, "checkout")
+def receive_checkout(dbapi_connection, connection_record, connection_proxy):
+    """Log connection checkout from pool"""
+    logger.debug("Database connection checked out from pool")
+
+# Initialize directories on import
+ensure_directories()
+
+# Test connection on import
+if not check_database_connection():
+    logger.warning("⚠️ Initial database connection test failed")
