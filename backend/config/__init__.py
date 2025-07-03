@@ -1,24 +1,32 @@
 """
 Configuration Package
-Contains application configuration and settings
+Contains database, settings, and university-specific configurations
 """
 
-from .settings import settings
 from .database import (
     engine,
     SessionLocal,
     Base,
     get_db,
     create_tables,
-    init_database
+    drop_tables,
+    init_database,
+    check_database_connection,
+    get_database_info
 )
+from .settings import settings
+from .university_settings import UniversitySettings
 
 __all__ = [
-    "settings",
     "engine",
-    "SessionLocal",
-    "Base", 
+    "SessionLocal", 
+    "Base",
     "get_db",
     "create_tables",
-    "init_database"
+    "drop_tables",
+    "init_database",
+    "check_database_connection",
+    "get_database_info",
+    "settings",
+    "UniversitySettings"
 ]

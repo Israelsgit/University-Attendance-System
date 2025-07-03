@@ -1,6 +1,5 @@
 """
-Attendance Routes
-Handles attendance check-in/check-out, history, and management
+Enhanced Attendance Routes for University System
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
@@ -11,717 +10,417 @@ from typing import Optional, List
 import logging
 
 from config.database import get_db
-from api.models.user import User
+from api.models.user import User, UserRole
+from api.models.course import Course
+from api.models.class_session import ClassSession
 from api.models.attendance import AttendanceRecord
+from api.models.enrollment import Enrollment
 from api.schemas.attendance import (
-    AttendanceResponse, AttendanceCreate, AttendanceUpdate,
-    AttendanceHistory, AttendanceStats, CheckInOut
+    AttendanceResponse, AttendanceCreate, AttendanceMarkingResponse,
+    StudentAttendanceStats, CourseAttendanceStats, AttendanceAnalytics
 )
-from api.utils.security import get_current_user
+from api.utils.security import get_current_user, get_current_lecturer
 from services.face_recognition import face_recognition_service
-from config.settings import settings
 
-# Configure logging
 logger = logging.getLogger(__name__)
-
-# Create router
 router = APIRouter()
 
-@router.get("/today", response_model=AttendanceResponse)
-async def get_today_attendance(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get today's attendance record for current user
-    """
-    try:
-        today = date.today()
-        
-        attendance = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date == today
-            )
-        ).first()
-        
-        if not attendance:
-            # Create empty attendance record for today
-            attendance = AttendanceRecord(
-                user_id=current_user.id,
-                date=today,
-                status="absent"
-            )
-        
-        return {"attendance": attendance.to_dict()}
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting today's attendance: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get today's attendance"
-        )
-
-@router.post("/check-in", response_model=CheckInOut)
-async def face_check_in(
+@router.post("/mark/{session_id}")
+async def mark_attendance_via_face(
+    session_id: int,
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Check in using face recognition
-    """
-    try:
-        today = date.today()
-        now = datetime.now()
-        
-        # Check if already checked in today
-        existing_attendance = db.query(AttendanceRecord).filter(
+    """Mark attendance for a class session using face recognition"""
+    
+    # Get class session
+    session = db.query(ClassSession).filter(ClassSession.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Class session not found"
+        )
+    
+    # Check if session is active
+    if not session.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Attendance marking is not active for this session"
+        )
+    
+    # For students: Check if enrolled in the course
+    if current_user.role == UserRole.STUDENT:
+        enrollment = db.query(Enrollment).filter(
             and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date == today
+                Enrollment.student_id == current_user.id,
+                Enrollment.course_id == session.course_id,
+                Enrollment.enrollment_status == "active"
             )
         ).first()
         
-        if existing_attendance and existing_attendance.check_in_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Already checked in today"
-            )
-        
-        # Validate image
-        if image.content_type not in settings.ALLOWED_IMAGE_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid image format"
-            )
-        
-        # Read image data
-        image_data = await image.read()
-        
-        # Process face recognition
-        if current_user.face_encoding:
-            # Verify against stored face encoding
-            result = face_recognition_service.verify_face_against_user(
-                image_data, current_user.face_encoding
-            )
-            
-            if not result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["error"]
-                )
-            
-            if not result["is_match"]:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Face verification failed. Confidence: {result['confidence']:.2f}"
-                )
-            
-            confidence = result["confidence"]
-        else:
-            # Process with general face recognition system
-            result = face_recognition_service.process_image(image_data)
-            
-            if not result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["error"]
-                )
-            
-            recognition = result["recognition"]
-            if not recognition["recognized"]:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Face not recognized. Confidence: {recognition['confidence']:.2f}"
-                )
-            
-            confidence = recognition["confidence"]
-        
-        # Determine status based on time
-        work_start = datetime.strptime(settings.WORK_START_TIME, "%H:%M").time()
-        late_threshold = (datetime.combine(today, work_start) + 
-                         timedelta(minutes=settings.LATE_THRESHOLD_MINUTES)).time()
-        
-        if now.time() > late_threshold:
-            status_value = "late"
-        else:
-            status_value = "present"
-        
-        # Create or update attendance record
-        if existing_attendance:
-            existing_attendance.check_in_time = now.time()
-            existing_attendance.status = status_value
-            existing_attendance.check_in_method = "face_recognition"
-            existing_attendance.face_confidence = confidence
-            existing_attendance.location = "Main Office"  # Can be dynamic
-            attendance = existing_attendance
-        else:
-            attendance = AttendanceRecord(
-                user_id=current_user.id,
-                date=today,
-                check_in_time=now.time(),
-                status=status_value,
-                check_in_method="face_recognition",
-                face_confidence=confidence,
-                location="Main Office"
-            )
-            db.add(attendance)
-        
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"✅ User checked in: {current_user.email} at {now.time()}")
-        
-        return {
-            "success": True,
-            "message": "Checked in successfully",
-            "timestamp": now.isoformat(),
-            "status": status_value,
-            "confidence": confidence,
-            "location": "Main Office"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Check-in error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Check-in failed"
-        )
-
-@router.post("/check-out", response_model=CheckInOut)
-async def face_check_out(
-    image: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Check out using face recognition
-    """
-    try:
-        today = date.today()
-        now = datetime.now()
-        
-        # Check if checked in today
-        attendance = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date == today
-            )
-        ).first()
-        
-        if not attendance or not attendance.check_in_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Not checked in today"
-            )
-        
-        if attendance.check_out_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Already checked out today"
-            )
-        
-        # Validate image
-        if image.content_type not in settings.ALLOWED_IMAGE_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid image format"
-            )
-        
-        # Read image data
-        image_data = await image.read()
-        
-        # Process face recognition (same logic as check-in)
-        if current_user.face_encoding:
-            result = face_recognition_service.verify_face_against_user(
-                image_data, current_user.face_encoding
-            )
-            
-            if not result["success"] or not result["is_match"]:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Face verification failed"
-                )
-            
-            confidence = result["confidence"]
-        else:
-            result = face_recognition_service.process_image(image_data)
-            
-            if not result["success"] or not result["recognition"]["recognized"]:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Face not recognized"
-                )
-            
-            confidence = result["recognition"]["confidence"]
-        
-        # Calculate total hours
-        check_in_datetime = datetime.combine(today, attendance.check_in_time)
-        total_hours = (now - check_in_datetime).total_seconds() / 3600
-        
-        # Determine final status
-        work_end = datetime.strptime(settings.WORK_END_TIME, "%H:%M").time()
-        early_threshold = (datetime.combine(today, work_end) - 
-                          timedelta(minutes=settings.EARLY_DEPARTURE_THRESHOLD_MINUTES)).time()
-        
-        if total_hours >= 8:
-            if total_hours > 9:
-                final_status = "overtime"
-            else:
-                final_status = "present"
-        elif now.time() < early_threshold:
-            final_status = "early_departure"
-        else:
-            final_status = attendance.status  # Keep existing status
-        
-        # Update attendance record
-        attendance.check_out_time = now.time()
-        attendance.total_hours = round(total_hours, 2)
-        attendance.status = final_status
-        attendance.check_out_method = "face_recognition"
-        
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"✅ User checked out: {current_user.email} at {now.time()}")
-        
-        return {
-            "success": True,
-            "message": "Checked out successfully",
-            "timestamp": now.isoformat(),
-            "status": final_status,
-            "confidence": confidence,
-            "total_hours": round(total_hours, 2),
-            "location": "Main Office"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Check-out error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Check-out failed"
-        )
-
-@router.post("/manual-check-in")
-async def manual_check_in(
-    reason: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Manual check-in with reason
-    """
-    try:
-        today = date.today()
-        now = datetime.now()
-        
-        # Check if already checked in
-        existing_attendance = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date == today
-            )
-        ).first()
-        
-        if existing_attendance and existing_attendance.check_in_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Already checked in today"
-            )
-        
-        # Determine status
-        work_start = datetime.strptime(settings.WORK_START_TIME, "%H:%M").time()
-        late_threshold = (datetime.combine(today, work_start) + 
-                         timedelta(minutes=settings.LATE_THRESHOLD_MINUTES)).time()
-        
-        status_value = "late" if now.time() > late_threshold else "present"
-        
-        # Create or update attendance
-        if existing_attendance:
-            existing_attendance.check_in_time = now.time()
-            existing_attendance.status = status_value
-            existing_attendance.check_in_method = "manual"
-            existing_attendance.notes = reason
-            existing_attendance.location = "Main Office"
-            attendance = existing_attendance
-        else:
-            attendance = AttendanceRecord(
-                user_id=current_user.id,
-                date=today,
-                check_in_time=now.time(),
-                status=status_value,
-                check_in_method="manual",
-                notes=reason,
-                location="Main Office"
-            )
-            db.add(attendance)
-        
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"✅ Manual check-in: {current_user.email} - {reason}")
-        
-        return {
-            "success": True,
-            "message": "Manual check-in recorded",
-            "timestamp": now.isoformat(),
-            "status": status_value
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Manual check-in error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Manual check-in failed"
-        )
-
-@router.post("/manual-check-out")
-async def manual_check_out(
-    reason: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Manual check-out with reason
-    """
-    try:
-        today = date.today()
-        now = datetime.now()
-        
-        # Get today's attendance
-        attendance = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date == today
-            )
-        ).first()
-        
-        if not attendance or not attendance.check_in_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Not checked in today"
-            )
-        
-        if attendance.check_out_time:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Already checked out today"
-            )
-        
-        # Calculate total hours
-        check_in_datetime = datetime.combine(today, attendance.check_in_time)
-        total_hours = (now - check_in_datetime).total_seconds() / 3600
-        
-        # Update attendance
-        attendance.check_out_time = now.time()
-        attendance.total_hours = round(total_hours, 2)
-        attendance.check_out_method = "manual"
-        if attendance.notes:
-            attendance.notes += f" | Check-out: {reason}"
-        else:
-            attendance.notes = f"Check-out: {reason}"
-        
-        # Update status if needed
-        if total_hours >= 8:
-            if total_hours > 9:
-                attendance.status = "overtime"
-            elif attendance.status == "late":
-                pass  # Keep late status
-            else:
-                attendance.status = "present"
-        
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"✅ Manual check-out: {current_user.email} - {reason}")
-        
-        return {
-            "success": True,
-            "message": "Manual check-out recorded",
-            "timestamp": now.isoformat(),
-            "total_hours": round(total_hours, 2)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Manual check-out error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Manual check-out failed"
-        )
-
-@router.get("/history", response_model=List[AttendanceHistory])
-async def get_attendance_history(
-    start_date: Optional[date] = Query(None),
-    end_date: Optional[date] = Query(None),
-    status: Optional[str] = Query(None),
-    limit: int = Query(50, le=100),
-    offset: int = Query(0),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get attendance history with filters
-    """
-    try:
-        query = db.query(AttendanceRecord).filter(
-            AttendanceRecord.user_id == current_user.id
-        )
-        
-        # Apply filters
-        if start_date:
-            query = query.filter(AttendanceRecord.date >= start_date)
-        
-        if end_date:
-            query = query.filter(AttendanceRecord.date <= end_date)
-        
-        if status:
-            query = query.filter(AttendanceRecord.status == status)
-        
-        # Order by date descending
-        query = query.order_by(desc(AttendanceRecord.date))
-        
-        # Apply pagination
-        attendance_records = query.offset(offset).limit(limit).all()
-        
-        return [record.to_dict() for record in attendance_records]
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting attendance history: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get attendance history"
-        )
-
-@router.get("/weekly-stats", response_model=AttendanceStats)
-async def get_weekly_stats(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get weekly attendance statistics
-    """
-    try:
-        # Get current week dates
-        today = date.today()
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
-        
-        # Get this week's attendance
-        weekly_records = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date >= week_start,
-                AttendanceRecord.date <= week_end
-            )
-        ).all()
-        
-        # Calculate stats
-        present_days = len([r for r in weekly_records if r.status in ['present', 'late', 'overtime']])
-        total_hours = sum([r.total_hours or 0 for r in weekly_records])
-        avg_hours = total_hours / max(present_days, 1)
-        
-        # Get monthly data for trends
-        month_start = today.replace(day=1)
-        monthly_records = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date >= month_start
-            )
-        ).all()
-        
-        monthly_present = len([r for r in monthly_records if r.status in ['present', 'late', 'overtime']])
-        monthly_total_days = len(monthly_records)
-        attendance_rate = (monthly_present / max(monthly_total_days, 1)) * 100
-        
-        return {
-            "present_days": present_days,
-            "total_days": 5,  # Working days in a week
-            "avg_hours": round(avg_hours, 2),
-            "total_hours": round(total_hours, 2),
-            "attendance_rate": round(attendance_rate, 2),
-            "week_start": week_start.isoformat(),
-            "week_end": week_end.isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting weekly stats: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get weekly statistics"
-        )
-
-@router.get("/monthly-stats")
-async def get_monthly_stats(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get monthly attendance statistics
-    """
-    try:
-        # Get current month
-        today = date.today()
-        month_start = today.replace(day=1)
-        
-        # Get this month's records
-        monthly_records = db.query(AttendanceRecord).filter(
-            and_(
-                AttendanceRecord.user_id == current_user.id,
-                AttendanceRecord.date >= month_start
-            )
-        ).all()
-        
-        # Calculate comprehensive stats
-        total_days = len(monthly_records)
-        present_days = len([r for r in monthly_records if r.status in ['present', 'late', 'overtime']])
-        late_days = len([r for r in monthly_records if r.status == 'late'])
-        overtime_days = len([r for r in monthly_records if r.status == 'overtime'])
-        absent_days = len([r for r in monthly_records if r.status == 'absent'])
-        
-        total_hours = sum([r.total_hours or 0 for r in monthly_records])
-        avg_hours = total_hours / max(present_days, 1)
-        attendance_rate = (present_days / max(total_days, 1)) * 100
-        
-        # Overtime hours
-        overtime_hours = sum([
-            (r.total_hours or 0) - 8 for r in monthly_records 
-            if r.total_hours and r.total_hours > 8
-        ])
-        
-        return {
-            "total_days": total_days,
-            "present_days": present_days,
-            "absent_days": absent_days,
-            "late_days": late_days,
-            "overtime_days": overtime_days,
-            "total_hours": round(total_hours, 2),
-            "avg_hours": round(avg_hours, 2),
-            "overtime_hours": round(overtime_hours, 2),
-            "attendance_rate": round(attendance_rate, 2),
-            "month": month_start.strftime("%Y-%m")
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting monthly stats: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get monthly statistics"
-        )
-
-@router.put("/{attendance_id}")
-async def update_attendance(
-    attendance_id: int,
-    attendance_update: AttendanceUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Update attendance record (admin/manager only)
-    """
-    try:
-        # Check permissions
-        if not current_user.can_manage_attendance():
+        if not enrollment:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions"
+                detail="You are not enrolled in this course"
             )
         
-        # Get attendance record
-        attendance = db.query(AttendanceRecord).filter(
-            AttendanceRecord.id == attendance_id
+        # Check if already marked attendance
+        existing_attendance = db.query(AttendanceRecord).filter(
+            and_(
+                AttendanceRecord.student_id == current_user.id,
+                AttendanceRecord.session_id == session_id
+            )
         ).first()
         
-        if not attendance:
+        if existing_attendance:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Attendance record not found"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Attendance already marked for this session"
             )
         
-        # Update fields
-        update_data = attendance_update.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            if hasattr(attendance, field):
-                setattr(attendance, field, value)
+        # Check if face is registered
+        if not current_user.is_face_registered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Face not registered. Please see your lecturer to register your face."
+            )
         
-        # Recalculate total hours if times changed
-        if attendance.check_in_time and attendance.check_out_time:
-            check_in_dt = datetime.combine(attendance.date, attendance.check_in_time)
-            check_out_dt = datetime.combine(attendance.date, attendance.check_out_time)
-            total_hours = (check_out_dt - check_in_dt).total_seconds() / 3600
-            attendance.total_hours = round(total_hours, 2)
-        
-        attendance.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"✅ Attendance updated by {current_user.email}: {attendance_id}")
-        
-        return {"message": "Attendance updated successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Attendance update error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Attendance update failed"
-        )
-
-@router.delete("/{attendance_id}")
-async def delete_attendance(
-    attendance_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Delete attendance record (admin only)
-    """
-    try:
-        # Check permissions
-        if not current_user.is_admin:
+        student_to_mark = current_user
+    
+    # For lecturers: They can mark attendance for any student in their course
+    elif current_user.role == UserRole.LECTURER:
+        if session.course.lecturer_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
+                detail="You can only mark attendance for your own courses"
             )
         
-        # Get and delete attendance record
-        attendance = db.query(AttendanceRecord).filter(
-            AttendanceRecord.id == attendance_id
-        ).first()
+        # Process image to identify student
+        image_data = await image.read()
+        result = face_recognition_service.identify_student(image_data)
         
-        if not attendance:
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+        
+        if not result["recognized"]:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Attendance record not found"
+                detail="Student not recognized. Student may need to register their face."
             )
         
-        db.delete(attendance)
-        db.commit()
+        # Get identified student
+        student_to_mark = db.query(User).filter(User.id == result["user_id"]).first()
+        if not student_to_mark:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Identified student not found in database"
+            )
         
-        logger.info(f"✅ Attendance deleted by {current_user.email}: {attendance_id}")
+        # Check if student is enrolled
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.student_id == student_to_mark.id,
+                Enrollment.course_id == session.course_id,
+                Enrollment.enrollment_status == "active"
+            )
+        ).first()
         
-        return {"message": "Attendance record deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Attendance deletion error: {e}")
-        db.rollback()
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Student {student_to_mark.full_name} is not enrolled in this course"
+            )
+    
+    else:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Attendance deletion failed"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students and lecturers can mark attendance"
         )
+    
+    # Process face recognition for verification
+    if current_user.role == UserRole.STUDENT:
+        image_data = await image.read()
+        result = face_recognition_service.verify_face_against_user(
+            image_data, current_user.face_encoding
+        )
+        
+        if not result["success"] or not result["is_match"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Face verification failed"
+            )
+        
+        confidence = result["confidence"]
+    else:
+        confidence = result["confidence"]
+    
+    # Determine attendance status based on time
+    now = datetime.now()
+    session_start_time = session.session_date
+    late_threshold = session_start_time + timedelta(minutes=15)  # 15 minutes late threshold
+    
+    if now <= late_threshold:
+        attendance_status = "present"
+    else:
+        attendance_status = "late"
+    
+    # Create attendance record
+    attendance = AttendanceRecord(
+        student_id=student_to_mark.id,
+        course_id=session.course_id,
+        session_id=session_id,
+        marked_at=now,
+        status=attendance_status,
+        face_confidence=confidence,
+        recognition_method="face_recognition",
+        marked_by_lecturer=current_user.id if current_user.role == UserRole.LECTURER else None
+    )
+    
+    db.add(attendance)
+    db.commit()
+    db.refresh(attendance)
+    
+    logger.info(f"✅ Attendance marked: {student_to_mark.full_name} - {attendance_status}")
+    
+    return {
+        "success": True,
+        "message": f"Attendance marked successfully for {student_to_mark.full_name}",
+        "student_name": student_to_mark.full_name,
+        "matric_number": student_to_mark.matric_number,
+        "status": attendance_status,
+        "confidence": confidence,
+        "marked_at": now.isoformat()
+    }
+
+@router.get("/course/{course_id}/analytics")
+async def get_course_attendance_analytics(
+    course_id: int,
+    current_lecturer: User = Depends(get_current_lecturer),
+    db: Session = Depends(get_db)
+):
+    """Get attendance analytics for a course (lecturer only)"""
+    
+    # Get course
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check if lecturer owns the course
+    if course.lecturer_id != current_lecturer.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view analytics for your own courses"
+        )
+    
+    # Get enrolled students
+    enrollments = db.query(Enrollment).filter(
+        and_(
+            Enrollment.course_id == course_id,
+            Enrollment.enrollment_status == "active"
+        )
+    ).all()
+    
+    total_students = len(enrollments)
+    
+    # Get all sessions for the course
+    sessions = db.query(ClassSession).filter(ClassSession.course_id == course_id).all()
+    total_sessions = len(sessions)
+    
+    # Get all attendance records for the course
+    attendance_records = db.query(AttendanceRecord).filter(
+        AttendanceRecord.course_id == course_id
+    ).all()
+    
+    # Calculate statistics
+    total_attendances = len(attendance_records)
+    present_count = len([a for a in attendance_records if a.status == "present"])
+    late_count = len([a for a in attendance_records if a.status == "late"])
+    absent_count = (total_students * total_sessions) - total_attendances
+    
+    # Calculate attendance rate
+    if total_students > 0 and total_sessions > 0:
+        attendance_rate = (total_attendances / (total_students * total_sessions)) * 100
+    else:
+        attendance_rate = 0
+    
+    # Student-wise statistics
+    student_stats = []
+    for enrollment in enrollments:
+        student = enrollment.student
+        student_attendances = [a for a in attendance_records if a.student_id == student.id]
+        
+        present = len([a for a in student_attendances if a.status == "present"])
+        late = len([a for a in student_attendances if a.status == "late"])
+        absent = total_sessions - len(student_attendances)
+        
+        rate = (len(student_attendances) / total_sessions * 100) if total_sessions > 0 else 0
+        
+        student_stats.append({
+            "matric_number": student.matric_number,
+            "student_name": student.full_name,
+            "student_identifier": student.matric_number,
+            "present": present,
+            "late": late,
+            "absent": absent,
+            "attendance_rate": round(rate, 2)
+        })
+    
+    # Session-wise statistics
+    session_stats = []
+    for session in sessions:
+        session_attendances = [a for a in attendance_records if a.session_id == session.id]
+        
+        session_stats.append({
+            "session_id": session.id,
+            "session_date": session.session_date.isoformat(),
+            "session_topic": session.session_topic,
+            "attendees": len(session_attendances),
+            "attendance_rate": (len(session_attendances) / total_students * 100) if total_students > 0 else 0
+        })
+    
+    return {
+        "course": course.to_dict(),
+        "summary": {
+            "total_students": total_students,
+            "total_sessions": total_sessions,
+            "total_attendances": total_attendances,
+            "present_count": present_count,
+            "late_count": late_count,
+            "absent_count": absent_count,
+            "overall_attendance_rate": round(attendance_rate, 2)
+        },
+        "student_statistics": student_stats,
+        "session_statistics": session_stats
+    }
+
+@router.get("/student/my-attendance")
+async def get_my_attendance(
+    course_id: Optional[int] = Query(None),
+    current_student: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get attendance records for current student"""
+    
+    if current_student.role != UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can access this endpoint"
+        )
+    
+    # Build query
+    query = db.query(AttendanceRecord).filter(
+        AttendanceRecord.student_id == current_student.id
+    )
+    
+    if course_id:
+        query = query.filter(AttendanceRecord.course_id == course_id)
+    
+    attendance_records = query.order_by(desc(AttendanceRecord.marked_at)).all()
+    
+    # Get enrolled courses for summary
+    enrollments = db.query(Enrollment).filter(
+        and_(
+            Enrollment.student_id == current_student.id,
+            Enrollment.enrollment_status == "active"
+        )
+    ).all()
+    
+    # Calculate course-wise statistics
+    course_stats = []
+    for enrollment in enrollments:
+        course = enrollment.course
+        
+        # Get total sessions for this course
+        total_sessions = db.query(ClassSession).filter(
+            ClassSession.course_id == course.id
+        ).count()
+        
+        # Get student's attendance for this course
+        course_attendances = [a for a in attendance_records if a.course_id == course.id]
+        
+        present = len([a for a in course_attendances if a.status == "present"])
+        late = len([a for a in course_attendances if a.status == "late"])
+        absent = total_sessions - len(course_attendances)
+        
+        rate = (len(course_attendances) / total_sessions * 100) if total_sessions > 0 else 0
+        
+        course_stats.append({
+            "course": course.to_dict(),
+            "total_sessions": total_sessions,
+            "present": present,
+            "late": late,
+            "absent": absent,
+            "attendance_rate": round(rate, 2)
+        })
+    
+    return {
+        "student": current_student.to_dict(),
+        "attendance_records": [record.to_dict() for record in attendance_records],
+        "course_statistics": course_stats
+    }
+
+@router.post("/session/{session_id}/activate")
+async def activate_attendance_marking(
+    session_id: int,
+    current_lecturer: User = Depends(get_current_lecturer),
+    db: Session = Depends(get_db)
+):
+    """Activate attendance marking for a session (lecturer only)"""
+    
+    # Get session
+    session = db.query(ClassSession).filter(ClassSession.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+    
+    # Check if lecturer owns the course
+    if session.course.lecturer_id != current_lecturer.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only activate attendance for your own courses"
+        )
+    
+    # Activate session
+    session.is_active = True
+    db.commit()
+    
+    return {"message": "Attendance marking activated for this session"}
+
+@router.post("/session/{session_id}/deactivate")
+async def deactivate_attendance_marking(
+    session_id: int,
+    current_lecturer: User = Depends(get_current_lecturer),
+    db: Session = Depends(get_db)
+):
+    """Deactivate attendance marking for a session (lecturer only)"""
+    
+    # Get session
+    session = db.query(ClassSession).filter(ClassSession.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
+    
+    # Check if lecturer owns the course
+    if session.course.lecturer_id != current_lecturer.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only deactivate attendance for your own courses"
+        )
+    
+    # Deactivate and complete session
+    session.is_active = False
+    session.is_completed = True
+    db.commit()
+    
+    return {"message": "Attendance marking deactivated and session completed"}

@@ -1,16 +1,25 @@
 """
 API Routes Package
-Contains all FastAPI route definitions
+Contains all API endpoint definitions for the university system
 """
 
-from .auth import router as auth_router
-from .attendance import router as attendance_router
-from .users import router as users_router
-from .analytics import router as analytics_router
+from . import auth, courses, attendance, users, analytics
 
 __all__ = [
-    "auth_router",
-    "attendance_router", 
-    "users_router",
-    "analytics_router"
+    "auth",
+    "courses", 
+    "attendance",
+    "users",
+    "analytics"
 ]
+
+# Create a list of all routers for easy import in main app
+def get_all_routers():
+    """Return all routers for registration in main app"""
+    return [
+        (auth.router, "/auth", ["Authentication"]),
+        (courses.router, "/courses", ["Courses"]),
+        (attendance.router, "/attendance", ["Attendance"]),
+        (users.router, "/users", ["Users"]),
+        (analytics.router, "/analytics", ["Analytics"])
+    ]

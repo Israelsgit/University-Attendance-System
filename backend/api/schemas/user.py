@@ -1,212 +1,185 @@
 """
-User Pydantic Schemas for Request/Response Validation
+User Schemas for University System
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, validator, Field
 from typing import Optional, List
 from datetime import datetime, date
-import re
+from enum import Enum
+
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    LECTURER = "lecturer"
+    STUDENT = "student"
+    HOD = "hod"
+
+class StudentLevel(str, Enum):
+    LEVEL_100 = "100"
+    LEVEL_200 = "200"
+    LEVEL_300 = "300"
+    LEVEL_400 = "400"
+    LEVEL_500 = "500"
+
+class Gender(str, Enum):
+    MALE = "male"
+    FEMALE = "female"
+    OTHER = "other"
 
 class UserBase(BaseModel):
     """Base user schema"""
-    name: str = Field(..., min_length=2, max_length=100)
+    full_name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    employee_id: str = Field(..., min_length=3, max_length=20)
-    department: str = Field(..., min_length=2, max_length=50)
     phone: Optional[str] = Field(None, max_length=20)
-    designation: Optional[str] = Field(None, max_length=100)
-    hire_date: Optional[date] = None
-    salary: Optional[float] = Field(None, ge=0)
-    manager_id: Optional[int] = None
-    
+    gender: Optional[Gender] = None
+    university: str = Field(default="Bowen University", max_length=100)
+    college: str = Field(..., max_length=100)
+    department: str = Field(..., max_length=100)
+    address: Optional[str] = Field(None, max_length=500)
+
+    @validator('full_name')
+    def validate_full_name(cls, v):
+        if not v or len(v.strip()) < 2:
+            raise ValueError('Full name must be at least 2 characters')
+        return v.strip()
+
     @validator('phone')
     def validate_phone(cls, v):
-        if v and not re.match(r'^\+?[\d\s\-\(\)]+$', v):
-            raise ValueError('Invalid phone number format')
+        if v:
+            # Basic phone validation
+            import re
+            if not re.match(r'^[\+]?[\d\s\-\(\)]{7,20}$', v):
+                raise ValueError('Invalid phone number format')
         return v
-    
-    @validator('employee_id')
-    def validate_employee_id(cls, v):
-        if not re.match(r'^[A-Z0-9]+$', v.upper()):
-            raise ValueError('Employee ID must contain only letters and numbers')
-        return v.upper()
 
 class UserCreate(UserBase):
     """Schema for creating new user"""
-    password: str = Field(..., min_length=8, max_length=128)
-    is_admin: bool = False
-    role: str = Field(default="employee")
+    password: str = Field(..., min_length=6, max_length=128)
+    role: UserRole
     
     @validator('password')
     def validate_password(cls, v):
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters')
+        return v
+
+class LecturerCreate(UserBase):
+    """Schema for creating lecturer"""
+    staff_id: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=128)
+    programme: Optional[str] = Field(None, max_length=100)
+    employment_date: Optional[date] = None
+    
+    @validator('staff_id')
+    def validate_staff_id(cls, v):
+        if not v or len(v.strip()) < 3:
+            raise ValueError('Staff ID must be at least 3 characters')
+        return v.upper().strip()
+
+class StudentCreate(UserBase):
+    """Schema for creating student"""
+    student_id: str = Field(..., min_length=3, max_length=50)
+    matric_number: Optional[str] = Field(None, max_length=20)
+    password: str = Field(..., min_length=6, max_length=128)
+    programme: str = Field(..., max_length=100)
+    level: StudentLevel
+    admission_date: Optional[date] = None
+    
+    @validator('student_id')
+    def validate_student_id(cls, v):
+        if not v or len(v.strip()) < 3:
+            raise ValueError('Student ID must be at least 3 characters')
+        return v.upper().strip()
+    
+    @validator('matric_number')
+    def validate_matric_number(cls, v):
+        if v:
+            import re
+            if not re.match(r'^[A-Z0-9]{4,10}$', v.upper()):
+                raise ValueError('Invalid matriculation number format')
+            return v.upper()
         return v
 
 class UserUpdate(BaseModel):
     """Schema for updating user"""
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
-    email: Optional[EmailStr] = None
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
-    department: Optional[str] = Field(None, min_length=2, max_length=50)
-    designation: Optional[str] = Field(None, max_length=100)
-    salary: Optional[float] = Field(None, ge=0)
-    manager_id: Optional[int] = None
-    is_active: Optional[bool] = None
-    
-    @validator('phone')
-    def validate_phone(cls, v):
-        if v and not re.match(r'^\+?[\d\s\-\(\)]+$', v):
-            raise ValueError('Invalid phone number format')
-        return v
+    address: Optional[str] = Field(None, max_length=500)
+    profile_image: Optional[str] = Field(None, max_length=255)
+    gender: Optional[Gender] = None
 
-class UserPasswordUpdate(BaseModel):
-    """Schema for password update"""
-    current_password: str
-    new_password: str = Field(..., min_length=8, max_length=128)
-    
-    @validator('new_password')
-    def validate_password(cls, v):
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        return v
+class UserLogin(BaseModel):
+    """Schema for user login"""
+    email: EmailStr
+    password: str = Field(..., min_length=1)
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     """Schema for user response"""
     id: int
-    is_active: bool
-    is_admin: bool
+    full_name: str
+    email: str
+    staff_id: Optional[str] = None
+    student_id: Optional[str] = None
+    matric_number: Optional[str] = None
+    university: str
+    college: str
+    department: str
+    programme: Optional[str] = None
+    level: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
     role: str
-    profile_image_url: Optional[str]
-    face_encoding_status: bool
-    last_login: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
+    is_active: bool
+    is_verified: bool
+    is_face_registered: bool
+    profile_image: Optional[str] = None
+    admission_date: Optional[datetime] = None
+    employment_date: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
     
     class Config:
         from_attributes = True
+        orm_mode = True
+
+class UserList(BaseModel):
+    """Schema for user list response"""
+    users: List[UserResponse]
+    total: int
+    page: int = 1
+    size: int = 20
+    pages: int = 1
 
 class UserProfile(BaseModel):
-    """Schema for user profile response"""
-    id: int
-    name: str
-    email: str
-    employee_id: str
-    department: str
-    designation: Optional[str]
-    phone: Optional[str]
-    hire_date: Optional[date]
-    profile_image_url: Optional[str]
-    face_encoding_status: bool
-    role: str
-    manager_name: Optional[str]
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+    """Schema for detailed user profile"""
+    user: UserResponse
+    attendance_summary: Optional[dict] = None
+    course_summary: Optional[dict] = None
+    recent_activity: Optional[List[dict]] = None
 
-class UserListResponse(BaseModel):
-    """Schema for user list response"""
-    id: int
-    name: str
-    email: str
-    employee_id: str
-    department: str
-    designation: Optional[str]
-    is_active: bool
-    role: str
-    last_login: Optional[datetime]
+class PasswordChange(BaseModel):
+    """Schema for password change"""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
+    confirm_password: str = Field(..., min_length=6, max_length=128)
     
-    class Config:
-        from_attributes = True
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if 'new_password' in values and v != values['new_password']:
+            raise ValueError('Passwords do not match')
+        return v
+
+class FaceRegistration(BaseModel):
+    """Schema for face registration"""
+    user_id: int
+    confidence: Optional[float] = None
+    image_path: Optional[str] = None
 
 class UserStats(BaseModel):
     """Schema for user statistics"""
-    total_attendance_days: int
-    present_days: int
-    absent_days: int
-    late_days: int
-    overtime_days: int
-    total_hours: float
-    avg_hours: float
-    attendance_rate: float
-    leave_balance: int
-    leaves_taken: int
+    total_users: int
+    active_users: int
+    lecturers: int
+    students: int
+    verified_users: int
+    face_registered_users: int
 
-class FaceEncodingUpdate(BaseModel):
-    """Schema for face encoding update"""
-    encoding_data: str  # Base64 encoded face data
-
-class BulkUserCreate(BaseModel):
-    """Schema for bulk user creation"""
-    users: List[UserCreate]
-    send_welcome_email: bool = True
-
-class UserSearchQuery(BaseModel):
-    """Schema for user search"""
-    query: Optional[str] = None
-    department: Optional[str] = None
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
-    limit: int = Field(default=50, le=100)
-    offset: int = Field(default=0, ge=0)
-
-class UserExport(BaseModel):
-    """Schema for user data export"""
-    format: str = Field(default="csv", pattern="^(csv|excel|json)$")
-    include_inactive: bool = False
-    departments: Optional[List[str]] = None
-
-# Admin-specific schemas
-class AdminUserUpdate(UserUpdate):
-    """Schema for admin user updates"""
-    is_admin: Optional[bool] = None
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
-    employee_id: Optional[str] = Field(None, min_length=3, max_length=20)
-    
-    @validator('employee_id')
-    def validate_employee_id(cls, v):
-        if v and not re.match(r'^[A-Z0-9]+$', v.upper()):
-            raise ValueError('Employee ID must contain only letters and numbers')
-        return v.upper() if v else None
-
-class UserRole(BaseModel):
-    """Schema for user role management"""
-    role: str = Field(..., pattern="^(admin|manager|hr|employee)$")
-    permissions: Optional[List[str]] = None
-
-class UserActivation(BaseModel):
-    """Schema for user activation/deactivation"""
-    is_active: bool
-    reason: Optional[str] = None
-
-# Response schemas
-class UserCreateResponse(BaseModel):
-    """Response schema for user creation"""
-    success: bool
-    message: str
-    user_id: int
-    employee_id: str
-
-class UserBulkCreateResponse(BaseModel):
-    """Response schema for bulk user creation"""
-    success: bool
-    message: str
-    created_count: int
-    failed_count: int
-    failed_users: List[dict] = []
-
-class UserDeleteResponse(BaseModel):
-    """Response schema for user deletion"""
-    success: bool
-    message: str
-    user_id: int

@@ -1,52 +1,86 @@
+# backend/api/schemas/__init__.py (Complete)
 """
-Pydantic Schemas Package
-Contains request/response validation schemas
+Schemas Package
+Contains Pydantic schema definitions for API validation
 """
 
-from .auth import (
-    UserLogin, 
-    UserRegister
-)
 from .user import (
-    UserCreate,
+    UserCreate, 
     UserUpdate, 
-    UserResponse,
+    UserResponse, 
+    UserLogin,
+    LecturerCreate,
+    StudentCreate,
+    UserList,
     UserProfile,
-    UserPasswordUpdate
+    PasswordChange,
+    FaceRegistration,
+    UserStats
+)
+from .course import (
+    CourseCreate,
+    CourseUpdate, 
+    CourseResponse,
+    EnrollmentCreate,
+    ClassSessionCreate
 )
 from .attendance import (
+    AttendanceResponse,
     AttendanceCreate,
     AttendanceUpdate,
-    AttendanceResponse,
-    AttendanceHistory,
-    CheckInOut
+    AttendanceMarkingResponse,
+    StudentAttendanceStats,
+    CourseAttendanceStats
+)
+from .auth import (
+    Token,
+    LecturerRegistration,
+    StudentRegistration
 )
 from .common import (
-    BaseResponse,
     SuccessResponse,
     ErrorResponse,
+    PaginationParams,
     PaginatedResponse
 )
 
 __all__ = [
-    # Auth schemas
-    "UserLogin",
-    "UserRegister",
     # User schemas
     "UserCreate",
-    "UserUpdate",
-    "UserResponse", 
+    "UserUpdate", 
+    "UserResponse",
+    "UserLogin",
+    "LecturerCreate",
+    "StudentCreate",
+    "UserList",
     "UserProfile",
-    "UserPasswordUpdate",
+    "PasswordChange",
+    "FaceRegistration",
+    "UserStats",
+    
+    # Course schemas
+    "CourseCreate",
+    "CourseUpdate",
+    "CourseResponse", 
+    "EnrollmentCreate",
+    "ClassSessionCreate",
+    
     # Attendance schemas
+    "AttendanceResponse",
     "AttendanceCreate",
     "AttendanceUpdate",
-    "AttendanceResponse",
-    "AttendanceHistory", 
-    "CheckInOut",
+    "AttendanceMarkingResponse",
+    "StudentAttendanceStats",
+    "CourseAttendanceStats",
+    
+    # Auth schemas
+    "Token",
+    "LecturerRegistration", 
+    "StudentRegistration",
+    
     # Common schemas
-    "BaseResponse",
     "SuccessResponse",
     "ErrorResponse",
+    "PaginationParams",
     "PaginatedResponse"
 ]

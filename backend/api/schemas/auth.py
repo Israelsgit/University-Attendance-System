@@ -1,133 +1,75 @@
 """
-Authentication Pydantic Schemas
+Authentication Schemas for University System
 """
 
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from pydantic import BaseModel, EmailStr, validator
+from typing import Optional, List
 from datetime import datetime
+from enum import Enum
+
+class UserType(str, Enum):
+    student = "student"
+    lecturer = "lecturer"
+    admin = "admin"
 
 class UserLogin(BaseModel):
-    """User login schema"""
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str
+    user_type: UserType
 
-class UserRegister(BaseModel):
-    """User registration schema"""
-    name: str = Field(..., min_length=2, max_length=100)
+class LecturerRegistration(BaseModel):
+    full_name: str
     email: EmailStr
-    password: str = Field(..., min_length=6)
-    employee_id: str = Field(..., min_length=3, max_length=50)
-    department: str = Field(..., min_length=2, max_length=100)
-    position: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, max_length=20)
+    staff_id: str
+    password: str
+    university: str = "Bowen University"
+    college: str
+    department: str
+    phone: Optional[str] = None
+    gender: Optional[str] = None
     
-    @validator('employee_id')
-    def validate_employee_id(cls, v):
-        if not v.isalnum():
-            raise ValueError('Employee ID must be alphanumeric')
-        return v.upper()
+    @validator('staff_id')
+    def validate_staff_id(cls, v):
+        if not v or len(v) < 3:
+            raise ValueError('Staff ID must be at least 3 characters')
+        return v
     
-    @validator('phone')
-    def validate_phone(cls, v):
-        if v and not v.replace('+', '').replace('-', '').replace(' ', '').isdigit():
-            raise ValueError('Invalid phone number format')
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters')
         return v
 
-class UserUpdate(BaseModel):
-    """User profile update schema"""
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
-    phone: Optional[str] = Field(None, max_length=20)
-    position: Optional[str] = Field(None, max_length=100)
-    bio: Optional[str] = Field(None, max_length=500)
-    timezone: Optional[str] = Field(None, max_length=50)
-    language: Optional[str] = Field(None, max_length=10)
+class StudentRegistration(BaseModel):
+    full_name: str
+    email: EmailStr
+    matric_number: str
+    password: str
+    university: str = "Bowen University"
+    college: str
+    department: str
+    programme: str
+    level: str  # "100", "200", "300", "400", "500"
+    phone: Optional[str] = None
+    gender: Optional[str] = None
     
-    @validator('phone')
-    def validate_phone(cls, v):
-        if v and not v.replace('+', '').replace('-', '').replace(' ', '').isdigit():
-            raise ValueError('Invalid phone number format')
+    @validator('level')
+    def validate_level(cls, v):
+        if v not in ["100", "200", "300", "400", "500"]:
+            raise ValueError('Level must be one of: 100, 200, 300, 400, 500')
         return v
-
-class ChangePassword(BaseModel):
-    """Change password schema"""
-    current_password: str
-    new_password: str = Field(..., min_length=6)
-    confirm_password: str
     
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
-            raise ValueError('Passwords do not match')
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters')
         return v
 
 class UserResponse(BaseModel):
-    """User response schema"""
     user: dict
+    message: str
 
-class TokenResponse(BaseModel):
-    """Token response schema"""
-    user: dict
+class Token(BaseModel):
     access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-class ProfileImageResponse(BaseModel):
-    """Profile image upload response"""
-    message: str
-    image_url: str
+    token_type: str
     user: dict
-
-class FaceEncodingResponse(BaseModel):
-    """Face encoding response"""
-    message: str
-    confidence_threshold: float
-
-class PasswordResetRequest(BaseModel):
-    """Password reset request schema"""
-    email: EmailStr
-
-class PasswordReset(BaseModel):
-    """Password reset schema"""
-    token: str
-    new_password: str = Field(..., min_length=6)
-    confirm_password: str
-    
-    @validator('confirm_password')
-    def passwords_match(cls, v, values):
-        if 'new_password' in values and v != values['new_password']:
-            raise ValueError('Passwords do not match')
-        return v
-
-class EmailVerification(BaseModel):
-    """Email verification schema"""
-    token: str
-
-class UserStats(BaseModel):
-    """User statistics schema"""
-    total_attendance_days: int
-    present_days: int
-    absent_days: int
-    late_days: int
-    average_hours: float
-    total_hours: float
-    attendance_rate: float
-
-class UserPreferenceUpdate(BaseModel):
-    """User preference update schema"""
-    notifications: Optional[dict] = None
-    theme: Optional[str] = Field(None, pattern="^(light|dark|auto)$")
-    language: Optional[str] = Field(None, max_length=10)
-    timezone: Optional[str] = Field(None, max_length=50)
-
-class ApiKeyCreate(BaseModel):
-    """API key creation schema"""
-    name: str = Field(..., min_length=3, max_length=100)
-    description: Optional[str] = Field(None, max_length=255)
-
-class ApiKeyResponse(BaseModel):
-    """API key response schema"""
-    id: int
-    name: str
-    key: str
-    created_at: datetime
-    last_used: Optional[datetime] = None
