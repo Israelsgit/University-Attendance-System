@@ -8,7 +8,6 @@ from datetime import datetime, date
 from enum import Enum
 
 class UserRole(str, Enum):
-    ADMIN = "admin"
     LECTURER = "lecturer"
     STUDENT = "student"
     HOD = "hod"

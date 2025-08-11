@@ -89,8 +89,8 @@ async def get_my_courses(
         ).all()
         courses = [enrollment.course for enrollment in enrollments]
     else:
-        # Admin can see all courses
-        courses = db.query(Course).all()
+        # Remove admin fallback logic
+        courses = []
     
     return [{"course": course.to_dict()} for course in courses]
 

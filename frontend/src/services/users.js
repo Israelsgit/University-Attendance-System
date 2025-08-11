@@ -1,41 +1,129 @@
-import api from "./api";
+// Cleaned Users Service - Admin functions removed
+import api from "./apiClient";
 
-export const usersService = {
-  // Get all users (admin only)
-  getAllUsers: async (filters = {}) => {
+export const userService = {
+  // Get current user profile
+  getCurrentUser: async () => {
     try {
-      const params = new URLSearchParams(filters);
-      const response = await api.get(`/users?${params}`);
+      const response = await api.get("/auth/me");
       return response;
     } catch (error) {
       throw error;
     }
   },
 
-  // Get user by ID
-  getUserById: async (userId) => {
+  // Update user profile
+  updateProfile: async (userData) => {
     try {
-      const response = await api.get(`/users/${userId}`);
+      const response = await api.put("/users/profile", userData);
       return response;
     } catch (error) {
       throw error;
     }
   },
 
-  // Update user (admin only)
-  updateUser: async (userId, updates) => {
+  // Change password
+  changePassword: async (passwordData) => {
     try {
-      const response = await api.put(`/users/${userId}`, updates);
+      const response = await api.post("/auth/change-password", passwordData);
       return response;
     } catch (error) {
       throw error;
     }
   },
 
-  // Delete user (admin only)
-  deleteUser: async (userId) => {
+  // Upload profile image
+  uploadProfileImage: async (imageFile) => {
     try {
-      const response = await api.delete(`/users/${userId}`);
+      const formData = new FormData();
+      formData.append("file", imageFile);
+
+      const response = await api.post("/auth/upload-profile-image", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Get user's courses (for students)
+  getUserCourses: async () => {
+    try {
+      const response = await api.get("/courses/enrolled");
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Get user's attendance records
+  getUserAttendance: async (
+    courseId = null,
+    startDate = null,
+    endDate = null
+  ) => {
+    try {
+      const params = new URLSearchParams();
+      if (courseId) params.append("course_id", courseId);
+      if (startDate) params.append("start_date", startDate);
+      if (endDate) params.append("end_date", endDate);
+
+      const response = await api.get(`/attendance/my-attendance?${params}`);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Register face for attendance
+  registerFace: async (faceData) => {
+    try {
+      const response = await api.post("/auth/register-face", faceData);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Get system info for forms
+  getSystemInfo: async () => {
+    try {
+      const response = await api.get("/auth/system-info");
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // For lecturers: Get students in their courses
+  getCourseStudents: async (courseId) => {
+    try {
+      const response = await api.get(`/courses/${courseId}/students`);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // For lecturers: Search students for enrollment
+  searchStudents: async (query) => {
+    try {
+      const response = await api.get(
+        `/users/search/students?q=${encodeURIComponent(query)}`
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Get user activity log (own activity only)
+  getUserActivityLog: async (limit = 50) => {
+    try {
+      const response = await api.get(`/users/activity?limit=${limit}`);
       return response;
     } catch (error) {
       throw error;
@@ -43,20 +131,20 @@ export const usersService = {
   },
 
   // Get user statistics
-  getUserStats: async (userId) => {
+  getUserStats: async () => {
     try {
-      const response = await api.get(`/users/${userId}/stats`);
+      const response = await api.get("/users/stats");
       return response;
     } catch (error) {
       throw error;
     }
   },
 
-  // Get user attendance summary
-  getUserAttendanceSummary: async (userId, period = "month") => {
+  // For lecturers: Get all students (for course enrollment)
+  getAllStudents: async (page = 1, limit = 20) => {
     try {
       const response = await api.get(
-        `/users/${userId}/attendance-summary?period=${period}`
+        `/users/students?page=${page}&limit=${limit}`
       );
       return response;
     } catch (error) {
@@ -64,108 +152,12 @@ export const usersService = {
     }
   },
 
-  // Bulk upload users (admin only)
-  bulkUploadUsers: async (csvFile) => {
-    try {
-      const formData = new FormData();
-      formData.append("csvFile", csvFile);
-
-      const response = await api.post("/users/bulk-upload", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Export users data (admin only)
-  exportUsers: async (format = "csv") => {
-    try {
-      const response = await api.get(`/users/export?format=${format}`, {
-        responseType: "blob",
-      });
-
-      // Create download link
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `users-${new Date().toISOString().split("T")[0]}.${format}`
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      return { success: true };
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Search users
-  searchUsers: async (query) => {
+  // For lecturers: Get all lecturers (for system overview)
+  getAllLecturers: async (page = 1, limit = 20) => {
     try {
       const response = await api.get(
-        `/users/search?q=${encodeURIComponent(query)}`
+        `/users/lecturers?page=${page}&limit=${limit}`
       );
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Get user roles and permissions
-  getUserRoles: async (userId) => {
-    try {
-      const response = await api.get(`/users/${userId}/roles`);
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Update user roles (admin only)
-  updateUserRoles: async (userId, roles) => {
-    try {
-      const response = await api.put(`/users/${userId}/roles`, { roles });
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Get user activity log
-  getUserActivityLog: async (userId, limit = 50) => {
-    try {
-      const response = await api.get(
-        `/users/${userId}/activity?limit=${limit}`
-      );
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Reset user password (admin only)
-  resetUserPassword: async (userId) => {
-    try {
-      const response = await api.post(`/users/${userId}/reset-password`);
-      return response;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  // Toggle user active status (admin only)
-  toggleUserStatus: async (userId, isActive) => {
-    try {
-      const response = await api.put(`/users/${userId}/status`, { isActive });
       return response;
     } catch (error) {
       throw error;

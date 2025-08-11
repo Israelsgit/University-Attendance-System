@@ -11,7 +11,6 @@ from .security import (
     get_current_user,
     get_current_active_user,
     get_current_lecturer,
-    get_current_admin,
     get_current_student
 )
 
@@ -73,7 +72,6 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "get_current_lecturer",
-    "get_current_admin",
     "get_current_student",
     
     # Validation functions

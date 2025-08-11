@@ -1,356 +1,608 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-hot-toast";
 import {
-  BookOpen,
-  Users,
-  Calendar,
-  BarChart3,
   Plus,
+  Users,
+  BookOpen,
+  BarChart3,
+  Calendar,
+  Clock,
+  TrendingUp,
   Settings,
   UserPlus,
   Camera,
-  Clock,
-  TrendingUp,
-  CheckCircle,
-  AlertCircle,
+  Download,
+  Eye,
+  Edit,
+  Trash2,
+  Shield,
 } from "lucide-react";
+
 import { useAuth } from "../hooks/useAuth";
-import { useCourses } from "../hooks/useCourses";
-import { useAttendance } from "../hooks/useAttendance";
+import { courseAPI, analyticsAPI, attendanceAPI } from "../services/apiClient";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import Button from "../components/common/Button";
-import Card from "../components/common/Card";
-import Modal from "../components/common/Modal";
-import CreateCourseModal from "../components/lecturer/CreateCourseModal";
-import EnrollStudentModal from "../components/lecturer/EnrollStudentModal";
-import AttendanceAnalytics from "../components/analytics/AttendanceAnalytics";
+import CreateCourseModal from "../components/modals/CreateCourseModal";
+import EnrollStudentModal from "../components/modals/EnrollStudentModal";
+import CreateSessionModal from "../components/modals/CreateSessionModal";
+import DashboardChart from "../components/charts/DashboardChart";
 
 const LecturerDashboard = () => {
   const { user } = useAuth();
-  const { courses, activeSessions, createSession, updateSession } =
-    useCourses();
-  const { getCourseAnalytics } = useAttendance();
+  const [loading, setLoading] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState({});
+  const [myCourses, setMyCourses] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [attendanceTrends, setAttendanceTrends] = useState([]);
 
+  // Modal states
   const [showCreateCourse, setShowCreateCourse] = useState(false);
   const [showEnrollStudent, setShowEnrollStudent] = useState(false);
+  const [showCreateSession, setShowCreateSession] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [activeSessionsData, setActiveSessionsData] = useState([]);
 
   useEffect(() => {
-    if (courses.length > 0) {
-      loadActiveSessions();
-    }
-  }, [courses]);
+    loadDashboardData();
+  }, []);
 
-  const loadActiveSessions = async () => {
-    const sessions = await Promise.all(
-      courses.map(async (course) => {
-        const analytics = await getCourseAnalytics(course.id);
-        return {
-          ...course,
-          analytics: analytics.summary,
-        };
-      })
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // Load lecturer dashboard data
+      const [statsRes, coursesRes, trendsRes] = await Promise.all([
+        analyticsAPI.getDashboardStats(),
+        courseAPI.getMyCourses(),
+        analyticsAPI.getAttendanceTrends("month"),
+      ]);
+
+      setDashboardStats(statsRes.data);
+      setMyCourses(coursesRes.data.courses || []);
+      setAttendanceTrends(trendsRes.data.trends || []);
+    } catch (error) {
+      console.error("Failed to load dashboard data:", error);
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateCourse = async (courseData) => {
+    try {
+      await courseAPI.createCourse(courseData);
+      toast.success("Course created successfully!");
+      setShowCreateCourse(false);
+      loadDashboardData();
+    } catch (error) {
+      console.error("Failed to create course:", error);
+      toast.error(error.response?.data?.detail || "Failed to create course");
+    }
+  };
+
+  const handleEnrollStudent = async (enrollmentData) => {
+    try {
+      await courseAPI.enrollStudent(
+        selectedCourse.id,
+        enrollmentData.student_email
+      );
+      toast.success("Student enrolled successfully!");
+      setShowEnrollStudent(false);
+      setSelectedCourse(null);
+      loadDashboardData();
+    } catch (error) {
+      console.error("Failed to enroll student:", error);
+      toast.error(error.response?.data?.detail || "Failed to enroll student");
+    }
+  };
+
+  const handleCreateSession = async (sessionData) => {
+    try {
+      await attendanceAPI.createSession(selectedCourse.id, sessionData);
+      toast.success("Attendance session created successfully!");
+      setShowCreateSession(false);
+      setSelectedCourse(null);
+      loadDashboardData();
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      toast.error(error.response?.data?.detail || "Failed to create session");
+    }
+  };
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm("Are you sure you want to delete this course?")) {
+      return;
+    }
+
+    try {
+      await courseAPI.deleteCourse(courseId);
+      toast.success("Course deleted successfully!");
+      loadDashboardData();
+    } catch (error) {
+      console.error("Failed to delete course:", error);
+      toast.error(error.response?.data?.detail || "Failed to delete course");
+    }
+  };
+
+  const handleExportAttendance = async (courseId) => {
+    try {
+      const response = await analyticsAPI.exportAttendanceData(courseId, "csv");
+
+      // Create download link
+      const blob = new Blob([response.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `attendance_${courseId}_${new Date().toISOString().split("T")[0]}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Attendance data exported successfully!");
+    } catch (error) {
+      console.error("Failed to export attendance:", error);
+      toast.error("Failed to export attendance data");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
     );
-    setActiveSessionsData(sessions);
-  };
-
-  const handleStartAttendance = async (courseId) => {
-    try {
-      const session = await createSession(courseId, {
-        session_date: new Date().toISOString(),
-        session_topic: "Class Session",
-        session_type: "lecture",
-        duration_minutes: 60,
-      });
-
-      // Activate the session for attendance
-      await updateSession(session.session_id, { is_active: true });
-
-      // Refresh data
-      loadActiveSessions();
-    } catch (error) {
-      console.error("Error starting attendance:", error);
-    }
-  };
-
-  const handleStopAttendance = async (sessionId) => {
-    try {
-      await updateSession(sessionId, { is_active: false, is_completed: true });
-      loadActiveSessions();
-    } catch (error) {
-      console.error("Error stopping attendance:", error);
-    }
-  };
-
-  const statsCards = [
-    {
-      title: "Total Courses",
-      value: courses.length,
-      icon: BookOpen,
-      color: "primary",
-      subtitle: "Active courses this semester",
-    },
-    {
-      title: "Total Students",
-      value: activeSessionsData.reduce(
-        (sum, course) => sum + (course.analytics?.total_students || 0),
-        0
-      ),
-      icon: Users,
-      color: "success",
-      subtitle: "Across all courses",
-    },
-    {
-      title: "Active Sessions",
-      value: activeSessions.length,
-      icon: Clock,
-      color: "warning",
-      subtitle: "Currently taking attendance",
-    },
-    {
-      title: "Avg Attendance",
-      value: `${Math.round(
-        activeSessionsData.reduce(
-          (sum, course) =>
-            sum + (course.analytics?.overall_attendance_rate || 0),
-          0
-        ) / Math.max(activeSessionsData.length, 1)
-      )}%`,
-      icon: TrendingUp,
-      color: "info",
-      subtitle: "Overall performance",
-    },
-  ];
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+    <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Welcome back, Dr. {user?.full_name}
-          </h1>
-          <p className="text-gray-300">
-            {user?.college} - {user?.department}
-          </p>
-          <p className="text-gray-400 text-sm">Staff ID: {user?.staff_id}</p>
-        </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white mb-2">
+                Welcome back, {user?.full_name}
+              </h1>
+              <p className="text-gray-400">
+                {user?.department} - {user?.college}
+              </p>
+              <p className="text-sm text-gray-500 flex items-center">
+                <Shield className="h-4 w-4 mr-1" />
+                {user?.staff_id} • Administrative Access
+              </p>
+            </div>
 
-        {/* Quick Actions */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-4">
-            <Button
-              onClick={() => setShowCreateCourse(true)}
-              className="flex items-center gap-2"
-              variant="primary"
-            >
-              <Plus className="h-4 w-4" />
-              Create Course
-            </Button>
-            <Button
-              onClick={() => setShowEnrollStudent(true)}
-              className="flex items-center gap-2"
-              variant="secondary"
-            >
-              <UserPlus className="h-4 w-4" />
-              Enroll Student
-            </Button>
+            {/* Quick Actions */}
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setShowCreateCourse(true)}
+                variant="primary"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Course
+              </Button>
+
+              <Button
+                onClick={() => setShowEnrollStudent(true)}
+                variant="secondary"
+                disabled={myCourses.length === 0}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Enroll Student
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {statsCards.map((stat, index) => {
-            const IconComponent = stat.icon;
-            return (
-              <Card key={index} className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-400 mb-1">
-                      {stat.title}
-                    </p>
-                    <p className="text-2xl font-bold text-white mb-1">
-                      {stat.value}
-                    </p>
-                    <p className="text-xs text-gray-500">{stat.subtitle}</p>
-                  </div>
-                  <div
-                    className={`h-12 w-12 bg-${stat.color}-500/20 rounded-lg flex items-center justify-center`}
-                  >
-                    <IconComponent
-                      className={`h-6 w-6 text-${stat.color}-400`}
-                    />
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Courses Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-          {courses.map((course) => {
-            const courseAnalytics = activeSessionsData.find(
-              (c) => c.id === course.id
-            )?.analytics;
-            const hasActiveSession = activeSessions.some(
-              (s) => s.course_id === course.id
-            );
-
-            return (
-              <Card key={course.id} className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1">
-                      {course.course_code}
-                    </h3>
-                    <p className="text-gray-300 text-sm mb-2 line-clamp-2">
-                      {course.course_title}
-                    </p>
-                    <div className="flex items-center gap-4 text-xs text-gray-400">
-                      <span>{course.level} Level</span>
-                      <span>{course.course_unit} Units</span>
-                      <span>{course.semester}</span>
-                    </div>
-                  </div>
-                  <div
-                    className={`h-3 w-3 rounded-full ${
-                      hasActiveSession ? "bg-green-400" : "bg-gray-500"
-                    }`}
-                  />
-                </div>
-
-                {/* Course Stats */}
-                {courseAnalytics && (
-                  <div className="grid grid-cols-2 gap-4 mb-4 p-3 bg-gray-800/50 rounded-lg">
-                    <div className="text-center">
-                      <p className="text-sm text-gray-400">Students</p>
-                      <p className="text-lg font-semibold text-white">
-                        {courseAnalytics.total_students}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-400">Attendance</p>
-                      <p className="text-lg font-semibold text-white">
-                        {Math.round(courseAnalytics.overall_attendance_rate)}%
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Course Actions */}
-                <div className="flex gap-2">
-                  {hasActiveSession ? (
-                    <Button
-                      onClick={() => handleStopAttendance(course.id)}
-                      variant="danger"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center gap-2"
-                    >
-                      <AlertCircle className="h-4 w-4" />
-                      Stop Attendance
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => handleStartAttendance(course.id)}
-                      variant="success"
-                      size="sm"
-                      className="flex-1 flex items-center justify-center gap-2"
-                    >
-                      <Camera className="h-4 w-4" />
-                      Start Attendance
-                    </Button>
-                  )}
-                  <Button
-                    onClick={() => setSelectedCourse(course)}
-                    variant="secondary"
-                    size="sm"
-                    className="flex items-center justify-center"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Class Schedule */}
-                {course.class_days && (
-                  <div className="mt-3 pt-3 border-t border-gray-700">
-                    <p className="text-xs text-gray-400 mb-1">Schedule</p>
-                    <p className="text-sm text-gray-300">
-                      {course.class_days.join(", ")} • {course.class_time_start}{" "}
-                      - {course.class_time_end}
-                    </p>
-                    {course.classroom && (
-                      <p className="text-xs text-gray-400">
-                        {course.classroom}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Recent Activity */}
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            Recent Activity
-          </h3>
-          <div className="space-y-3">
-            {activeSessions.map((session) => (
-              <div
-                key={session.id}
-                className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse" />
-                  <div>
-                    <p className="text-white font-medium">
-                      {session.course_code}
-                    </p>
-                    <p className="text-gray-400 text-sm">
-                      Attendance in progress
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-white text-sm">
-                    {session.attendees || 0} students
-                  </p>
-                  <p className="text-gray-400 text-xs">
-                    Started {new Date(session.created_at).toLocaleTimeString()}
-                  </p>
-                </div>
+          {/* Total Courses */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Courses</p>
+                <p className="text-2xl font-bold text-white">
+                  {dashboardStats.total_courses || 0}
+                </p>
+                <p className="text-xs text-gray-500">Active this semester</p>
               </div>
-            ))}
-            {activeSessions.length === 0 && (
-              <p className="text-gray-400 text-center py-4">
-                No active sessions
-              </p>
+              <div className="p-3 bg-blue-500/20 rounded-lg">
+                <BookOpen className="h-6 w-6 text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Total Students */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Students</p>
+                <p className="text-2xl font-bold text-white">
+                  {dashboardStats.total_students || 0}
+                </p>
+                <p className="text-xs text-gray-500">Across all courses</p>
+              </div>
+              <div className="p-3 bg-green-500/20 rounded-lg">
+                <Users className="h-6 w-6 text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Active Sessions */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Active Sessions</p>
+                <p className="text-2xl font-bold text-white">
+                  {dashboardStats.active_sessions || 0}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Currently taking attendance
+                </p>
+              </div>
+              <div className="p-3 bg-orange-500/20 rounded-lg">
+                <Clock className="h-6 w-6 text-orange-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Average Attendance */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Avg Attendance</p>
+                <p className="text-2xl font-bold text-white">
+                  {dashboardStats.average_attendance?.toFixed(1) || 0}%
+                </p>
+                <p className="text-xs text-gray-500">Overall performance</p>
+              </div>
+              <div className="p-3 bg-purple-500/20 rounded-lg">
+                <TrendingUp className="h-6 w-6 text-purple-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* My Courses */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">My Courses</h2>
+              <div className="flex gap-2">
+                <Link
+                  to="/analytics"
+                  className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                >
+                  View Analytics
+                </Link>
+              </div>
+            </div>
+
+            {myCourses.length > 0 ? (
+              <div className="space-y-4">
+                {myCourses.map((course) => (
+                  <div
+                    key={course.id}
+                    className="bg-white/5 rounded-lg p-4 border border-white/10"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-medium text-white">
+                            {course.course_code}
+                          </h3>
+                          <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded">
+                            {course.course_units} units
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-2">
+                          {course.course_title}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span>{course.students_count || 0} students</span>
+                          <span>{course.sessions_count || 0} sessions</span>
+                          <span>{course.level} Level</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-1">
+                          <Button
+                            onClick={() => {
+                              setSelectedCourse(course);
+                              setShowEnrollStudent(true);
+                            }}
+                            variant="secondary"
+                            size="small"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                          </Button>
+
+                          <Button
+                            onClick={() => {
+                              setSelectedCourse(course);
+                              setShowCreateSession(true);
+                            }}
+                            variant="secondary"
+                            size="small"
+                          >
+                            <Camera className="h-3 w-3" />
+                          </Button>
+
+                          <Button
+                            onClick={() => handleExportAttendance(course.id)}
+                            variant="secondary"
+                            size="small"
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
+
+                        <div className="flex gap-1">
+                          <Button
+                            onClick={() => {
+                              /* Handle edit course */
+                            }}
+                            variant="secondary"
+                            size="small"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+
+                          <Button
+                            onClick={() => handleDeleteCourse(course.id)}
+                            variant="danger"
+                            size="small"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <BookOpen className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-400 mb-2">No courses created yet</p>
+                <p className="text-sm text-gray-500 mb-4">
+                  Create your first course to start managing attendance
+                </p>
+                <Button
+                  onClick={() => setShowCreateCourse(true)}
+                  variant="primary"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Course
+                </Button>
+              </div>
             )}
           </div>
-        </Card>
+
+          {/* Quick Actions */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <h2 className="text-xl font-semibold text-white mb-6">
+              Quick Actions
+            </h2>
+
+            <div className="grid grid-cols-1 gap-4">
+              {/* Course Management */}
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="flex items-center mb-3">
+                  <BookOpen className="h-5 w-5 text-blue-400 mr-2" />
+                  <h3 className="font-medium text-white">Course Management</h3>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  Create and manage your courses
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowCreateCourse(true)}
+                    variant="primary"
+                    size="small"
+                  >
+                    Create Course
+                  </Button>
+                  <Link to="/courses">
+                    <Button variant="secondary" size="small">
+                      <Eye className="h-3 w-3 mr-1" />
+                      View All
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Student Management */}
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="flex items-center mb-3">
+                  <Users className="h-5 w-5 text-green-400 mr-2" />
+                  <h3 className="font-medium text-white">Student Management</h3>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  Enroll students and manage registrations
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowEnrollStudent(true)}
+                    variant="primary"
+                    size="small"
+                    disabled={myCourses.length === 0}
+                  >
+                    Enroll Student
+                  </Button>
+                  <Link to="/students">
+                    <Button variant="secondary" size="small">
+                      <Eye className="h-3 w-3 mr-1" />
+                      View All
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Attendance Sessions */}
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="flex items-center mb-3">
+                  <Camera className="h-5 w-5 text-purple-400 mr-2" />
+                  <h3 className="font-medium text-white">
+                    Attendance Sessions
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  Start attendance sessions for your classes
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowCreateSession(true)}
+                    variant="primary"
+                    size="small"
+                    disabled={myCourses.length === 0}
+                  >
+                    Start Session
+                  </Button>
+                  <Link to="/attendance">
+                    <Button variant="secondary" size="small">
+                      <Eye className="h-3 w-3 mr-1" />
+                      Manage
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Analytics & Reports */}
+              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                <div className="flex items-center mb-3">
+                  <BarChart3 className="h-5 w-5 text-orange-400 mr-2" />
+                  <h3 className="font-medium text-white">
+                    Analytics & Reports
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-400 mb-3">
+                  View detailed attendance analytics
+                </p>
+                <div className="flex gap-2">
+                  <Link to="/analytics">
+                    <Button variant="primary" size="small">
+                      View Analytics
+                    </Button>
+                  </Link>
+                  <Button
+                    onClick={() => {
+                      if (myCourses.length > 0) {
+                        handleExportAttendance(myCourses[0].id);
+                      }
+                    }}
+                    variant="secondary"
+                    size="small"
+                    disabled={myCourses.length === 0}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Export
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Attendance Trends Chart */}
+        {attendanceTrends.length > 0 && (
+          <div className="mt-8 bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">
+                Attendance Trends
+              </h2>
+              <Link
+                to="/analytics"
+                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+              >
+                View Detailed Analytics
+              </Link>
+            </div>
+            <DashboardChart data={attendanceTrends} />
+          </div>
+        )}
+
+        {/* System Administration */}
+        <div className="mt-8 bg-gradient-to-r from-purple-500/10 to-blue-500/10 backdrop-blur-lg rounded-xl border border-purple-500/20 p-6">
+          <div className="flex items-center mb-4">
+            <Shield className="h-6 w-6 text-purple-400 mr-3" />
+            <h2 className="text-xl font-semibold text-white">
+              System Administration
+            </h2>
+          </div>
+
+          <p className="text-gray-300 mb-4">
+            As a lecturer, you have full administrative access to manage the
+            attendance system.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/5 rounded-lg p-4">
+              <h3 className="font-medium text-white mb-2">Course Management</h3>
+              <p className="text-sm text-gray-400">
+                Create, edit, and delete courses. Set up class schedules and
+                requirements.
+              </p>
+            </div>
+
+            <div className="bg-white/5 rounded-lg p-4">
+              <h3 className="font-medium text-white mb-2">
+                Student Enrollment
+              </h3>
+              <p className="text-sm text-gray-400">
+                Enroll students in courses and manage their face registrations.
+              </p>
+            </div>
+
+            <div className="bg-white/5 rounded-lg p-4">
+              <h3 className="font-medium text-white mb-2">System Analytics</h3>
+              <p className="text-sm text-gray-400">
+                View comprehensive reports and export attendance data.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Modals */}
-      <CreateCourseModal
-        isOpen={showCreateCourse}
-        onClose={() => setShowCreateCourse(false)}
-      />
+      {showCreateCourse && (
+        <CreateCourseModal
+          isOpen={showCreateCourse}
+          onClose={() => setShowCreateCourse(false)}
+          onSubmit={handleCreateCourse}
+        />
+      )}
 
-      <EnrollStudentModal
-        isOpen={showEnrollStudent}
-        onClose={() => setShowEnrollStudent(false)}
-        courses={courses}
-      />
+      {showEnrollStudent && (
+        <EnrollStudentModal
+          isOpen={showEnrollStudent}
+          onClose={() => {
+            setShowEnrollStudent(false);
+            setSelectedCourse(null);
+          }}
+          onSubmit={handleEnrollStudent}
+          courses={myCourses}
+          selectedCourse={selectedCourse}
+        />
+      )}
 
-      {selectedCourse && (
-        <Modal
-          isOpen={!!selectedCourse}
-          onClose={() => setSelectedCourse(null)}
-          title={`${selectedCourse.course_code} Analytics`}
-        >
-          <AttendanceAnalytics course={selectedCourse} />
-        </Modal>
+      {showCreateSession && (
+        <CreateSessionModal
+          isOpen={showCreateSession}
+          onClose={() => {
+            setShowCreateSession(false);
+            setSelectedCourse(null);
+          }}
+          onSubmit={handleCreateSession}
+          course={selectedCourse}
+        />
       )}
     </div>
   );

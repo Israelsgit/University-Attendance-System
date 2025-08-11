@@ -13,18 +13,22 @@ import { useAuth } from "./hooks/useAuth";
 
 // Pages
 import Login from "./pages/auth/Login";
+import StudentRegister from "./pages/auth/StudentRegister";
+import LecturerRegister from "./pages/auth/LecturerRegister";
 import LecturerDashboard from "./pages/LecturerDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
 import Profile from "./pages/Profile";
 import Analytics from "./pages/Analytics";
-import Register from "./pages/auth/Register";
+import Attendance from "./pages/Attendance";
+import FaceRecognition from "./pages/FaceRecognition";
+import NotFound from "./pages/NotFound";
 
 // Components
 import Navbar from "./components/common/Navbar";
 import LoadingSpinner from "./components/common/LoadingSpinner";
 
 // Protected Route Component
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, requiredRole = null }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -35,10 +39,19 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  return user ? children : <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check role requirement
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 };
 
-// Public Route Component
+// Public Route Component (redirect if authenticated)
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -69,13 +82,46 @@ const DashboardRoute = () => {
 
   if (!user) return <Navigate to="/login" replace />;
 
-  if (user.role === "lecturer" || user.role === "admin") {
+  // Lecturers get full management dashboard
+  if (user.role === "lecturer") {
     return <LecturerDashboard />;
-  } else if (user.role === "student") {
+  }
+  // Students get simplified dashboard
+  else if (user.role === "student") {
     return <StudentDashboard />;
-  } else {
+  }
+  // Fallback to login
+  else {
     return <Navigate to="/login" replace />;
   }
+};
+
+// Analytics Route (Lecturer Only)
+const AnalyticsRoute = () => {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  // Only lecturers can access analytics
+  if (user.role !== "lecturer") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Analytics />;
+};
+
+// Attendance Management Route (Lecturer Only)
+const AttendanceManagementRoute = () => {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  // Only lecturers can manage attendance
+  if (user.role !== "lecturer") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Attendance />;
 };
 
 // Main App Component
@@ -95,12 +141,27 @@ function AppContent() {
           />
 
           <Route
-            path="/register"
+            path="/register/student"
             element={
               <PublicRoute>
-                <Register />
+                <StudentRegister />
               </PublicRoute>
             }
+          />
+
+          <Route
+            path="/register/lecturer"
+            element={
+              <PublicRoute>
+                <LecturerRegister />
+              </PublicRoute>
+            }
+          />
+
+          {/* Redirect old register route */}
+          <Route
+            path="/register"
+            element={<Navigate to="/register/student" replace />}
           />
 
           {/* Protected Routes */}
@@ -127,48 +188,121 @@ function AppContent() {
           />
 
           <Route
-            path="/analytics"
+            path="/face-recognition"
             element={
               <ProtectedRoute>
                 <Layout>
-                  <Analytics />
+                  <FaceRecognition />
                 </Layout>
               </ProtectedRoute>
             }
           />
 
-          {/* Default redirect */}
+          {/* Lecturer Only Routes */}
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute requiredRole="lecturer">
+                <Layout>
+                  <AnalyticsRoute />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/attendance"
+            element={
+              <ProtectedRoute requiredRole="lecturer">
+                <Layout>
+                  <AttendanceManagementRoute />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/courses"
+            element={
+              <ProtectedRoute requiredRole="lecturer">
+                <Layout>
+                  <LecturerDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/students"
+            element={
+              <ProtectedRoute requiredRole="lecturer">
+                <Layout>
+                  <LecturerDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Student Only Routes */}
+          <Route
+            path="/my-attendance"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <Layout>
+                  <StudentDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/my-courses"
+            element={
+              <ProtectedRoute requiredRole="student">
+                <Layout>
+                  <StudentDashboard />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Default Routes */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
           {/* 404 Route */}
-          <Route
-            path="*"
-            element={
-              <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-                <div className="text-center">
-                  <h1 className="text-6xl font-bold text-white mb-4">404</h1>
-                  <p className="text-xl text-gray-300 mb-8">Page not found</p>
-                  <a
-                    href="/dashboard"
-                    className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg transition-colors"
-                  >
-                    Go to Dashboard
-                  </a>
-                </div>
-              </div>
-            }
-          />
+          <Route path="/404" element={<NotFound />} />
+          <Route path="*" element={<Navigate to="/404" replace />} />
         </Routes>
 
+        {/* Toast Notifications */}
         <Toaster
           position="top-right"
           toastOptions={{
             duration: 4000,
             style: {
-              background: "rgba(17, 24, 39, 0.8)",
-              color: "#fff",
-              backdropFilter: "blur(10px)",
-              border: "1px solid rgba(75, 85, 99, 0.3)",
+              background: "rgba(15, 23, 42, 0.95)",
+              color: "#ffffff",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
+              borderRadius: "12px",
+              backdropFilter: "blur(16px)",
+            },
+            success: {
+              iconTheme: {
+                primary: "#10B981",
+                secondary: "#ffffff",
+              },
+            },
+            error: {
+              iconTheme: {
+                primary: "#EF4444",
+                secondary: "#ffffff",
+              },
+            },
+            loading: {
+              iconTheme: {
+                primary: "#6366F1",
+                secondary: "#ffffff",
+              },
             },
           }}
         />
@@ -181,11 +315,11 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AttendanceProvider>
-        <CourseProvider>
+      <CourseProvider>
+        <AttendanceProvider>
           <AppContent />
-        </CourseProvider>
-      </AttendanceProvider>
+        </AttendanceProvider>
+      </CourseProvider>
     </AuthProvider>
   );
 }
