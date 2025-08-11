@@ -2,11 +2,13 @@
 
 A modern, AI-powered attendance management system with facial recognition capabilities, built with React.js and Python.
 
-![Attendance System Screenshot](https://via.placeholder.com/800x400/1e293b/3b82f6?text=Facial+Recognition+Attendance+System)
+![Login Screenshot](assets/screenshots/login-page.png)
+![Dashboard Screenshot](assets/screenshots/admin-dashboard.png)
 
 ## 🌟 Features
 
 ### Frontend (React.js + Tailwind CSS)
+
 - **Modern UI/UX**: Glass morphism design with dark theme
 - **Facial Recognition**: Real-time face detection and recognition for attendance
 - **Dashboard Analytics**: Comprehensive attendance analytics and insights
@@ -15,6 +17,7 @@ A modern, AI-powered attendance management system with facial recognition capabi
 - **Real-time Updates**: Live attendance tracking and notifications
 
 ### Backend (Python)
+
 - **Face Recognition**: Advanced face detection using OpenCV and FaceNet
 - **Machine Learning**: SVM model for face classification
 - **REST API**: Complete API for frontend integration
@@ -24,6 +27,7 @@ A modern, AI-powered attendance management system with facial recognition capabi
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js 16+ and npm/yarn
 - Python 3.8+
 - Git
@@ -31,12 +35,14 @@ A modern, AI-powered attendance management system with facial recognition capabi
 ### Frontend Setup
 
 1. **Clone the repository**
+
 ```bash
 git clone https://github.com/yourusername/facial-recognition-attendance.git
 cd facial-recognition-attendance/frontend
 ```
 
 2. **Install dependencies**
+
 ```bash
 npm install
 # or
@@ -44,12 +50,14 @@ yarn install
 ```
 
 3. **Environment configuration**
+
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
 4. **Start development server**
+
 ```bash
 npm start
 # or
@@ -61,27 +69,32 @@ The frontend will be available at `http://localhost:3000`
 ### Backend Setup
 
 1. **Navigate to backend directory**
+
 ```bash
 cd ../backend
 ```
 
 2. **Create virtual environment**
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. **Install Python dependencies**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 4. **Run the existing face recognition system**
+
 ```bash
 python main.py
 ```
 
 5. **Set up API server** (create new API endpoints)
+
 ```bash
 python api/app.py
 ```
@@ -89,20 +102,25 @@ python api/app.py
 ## 📱 Screenshots
 
 ### Login Page
+
 Modern glass morphism design with gradient backgrounds and smooth animations.
 
 ### Dashboard
+
 Real-time attendance tracking with interactive charts and analytics.
 
 ### Face Recognition
+
 Live camera feed with face detection overlay and real-time processing.
 
 ### Profile Management
+
 Comprehensive user profile with photo upload and settings.
 
 ## 🛠️ Technology Stack
 
 ### Frontend
+
 - **React 18**: Modern React with hooks and context
 - **Tailwind CSS**: Utility-first CSS framework
 - **Recharts**: Beautiful, responsive charts
@@ -112,6 +130,7 @@ Comprehensive user profile with photo upload and settings.
 - **React Hot Toast**: Elegant notifications
 
 ### Backend
+
 - **Python**: Core language
 - **OpenCV**: Computer vision library
 - **TensorFlow/Keras**: Machine learning framework
@@ -123,6 +142,7 @@ Comprehensive user profile with photo upload and settings.
 ## 📋 API Endpoints
 
 ### Authentication
+
 - `POST /api/auth/login` - User login
 - `POST /api/auth/register` - User registration
 - `GET /api/auth/me` - Get current user
@@ -130,6 +150,7 @@ Comprehensive user profile with photo upload and settings.
 - `POST /api/auth/logout` - User logout
 
 ### Attendance
+
 - `GET /api/attendance/today` - Get today's attendance
 - `POST /api/attendance/check-in` - Face recognition check-in
 - `POST /api/attendance/check-out` - Face recognition check-out
@@ -139,6 +160,7 @@ Comprehensive user profile with photo upload and settings.
 ## 🔧 Configuration
 
 ### Frontend Environment Variables
+
 ```env
 REACT_APP_API_URL=http://localhost:8000/api
 REACT_APP_WEBSOCKET_URL=ws://localhost:8000/ws
@@ -147,6 +169,7 @@ REACT_APP_MOCK_API=true
 ```
 
 ### Backend Configuration
+
 ```python
 # API Configuration
 API_HOST = "localhost"
@@ -162,6 +185,7 @@ EMBEDDINGS_PATH = "faces_embeddings_done_35classes.npz"
 ## 📊 Features Overview
 
 ### 🎯 Dashboard
+
 - Real-time attendance status
 - Weekly and monthly statistics
 - Interactive charts and graphs
@@ -169,18 +193,21 @@ EMBEDDINGS_PATH = "faces_embeddings_done_35classes.npz"
 - Quick check-in/check-out buttons
 
 ### 👤 Profile Management
+
 - Personal information editing
 - Profile photo upload with preview
 - Password change functionality
 - Account settings and preferences
 
 ### 📈 Analytics
+
 - Attendance patterns and trends
 - Performance metrics and KPIs
 - Goal tracking and achievements
 - Detailed statistics and insights
 
 ### 📅 Attendance Management
+
 - Complete attendance history
 - Manual entry with reason
 - Leave request system
@@ -188,6 +215,7 @@ EMBEDDINGS_PATH = "faces_embeddings_done_35classes.npz"
 - Advanced filtering options
 
 ### 🔐 Security Features
+
 - JWT token authentication
 - Protected routes and API endpoints
 - Input validation and sanitization
@@ -197,12 +225,14 @@ EMBEDDINGS_PATH = "faces_embeddings_done_35classes.npz"
 ## 🚀 Deployment
 
 ### Frontend (Vercel/Netlify)
+
 ```bash
 npm run build
 # Deploy the build folder
 ```
 
 ### Backend (Railway/Heroku)
+
 ```bash
 # Create Procfile
 echo "web: python api/app.py" > Procfile
@@ -211,6 +241,7 @@ echo "web: python api/app.py" > Procfile
 ```
 
 ### Docker Deployment
+
 ```bash
 docker-compose up --build
 ```
