@@ -1,34 +1,46 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import {
-  Eye,
-  EyeOff,
-  LogIn,
-  GraduationCap,
-  UserCheck,
-  Users,
-} from "lucide-react";
-import { useAuth } from "../../hooks/useAuth";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "react-hot-toast";
+import { LogIn, User, GraduationCap, Eye, EyeOff } from "lucide-react";
+
 import Button from "../../components/common/Button";
 import Input from "../../components/common/Input";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
+import { useAuth } from "../../hooks/useAuth";
 
 const Login = () => {
-  const { login, isAuthenticating } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login, loading: authLoading } = useAuth();
+
   const [formData, setFormData] = useState({
-    email: "", // Now always email for backend
+    email: "",
     password: "",
-    userType: "student", // Used for user_type in backend
+    userType: "student", // Default to student, removed admin
   });
+
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const handleChange = (e) => {
+  // Check for registration success message
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const registered = searchParams.get("registered");
+    const userType = searchParams.get("userType");
+
+    if (registered === "true") {
+      toast.success(`${userType} account created successfully! Please login.`);
+    }
+  }, [location]);
+
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors((prev) => ({
@@ -38,19 +50,25 @@ const Login = () => {
     }
   };
 
+  const handleUserTypeChange = (userType) => {
+    setFormData((prev) => ({
+      ...prev,
+      userType,
+    }));
+    setErrors({});
+  };
+
   const validateForm = () => {
     const newErrors = {};
 
-    if (!formData.email.trim()) {
+    if (!formData.email) {
       newErrors.email = "Email is required";
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
+      newErrors.email = "Please enter a valid email";
     }
 
     if (!formData.password) {
       newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
     }
 
     setErrors(newErrors);
@@ -60,128 +78,136 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      toast.error("Please fill in all required fields correctly");
+      return;
+    }
 
-    const loginData = {
-      email: formData.email.trim(),
-      password: formData.password,
-      user_type: formData.userType,
-    };
+    setIsAuthenticating(true);
 
-    const result = await login(loginData);
-    if (result.success) {
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 100);
+    try {
+      await login({
+        email: formData.email,
+        password: formData.password,
+        user_type: formData.userType,
+      });
+
+      toast.success("Login successful!");
+
+      // Redirect based on user type
+      const redirectTo = location.state?.from?.pathname || "/dashboard";
+      navigate(redirectTo, { replace: true });
+    } catch (error) {
+      console.error("Login error:", error);
+
+      let errorMessage = "Login failed. Please try again.";
+
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage);
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
-  const getPlaceholderText = () => {
-    return "Email address (e.g., yourname@student.bowen.edu.ng)";
-  };
-
-  const getIdentifierLabel = () => {
-    return "Email Address";
-  };
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+      <div className="w-full max-w-md">
         {/* Header */}
-        <div className="text-center">
-          <div className="mx-auto h-20 w-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
-            <GraduationCap className="h-10 w-10 text-white" />
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl mb-4">
+            <GraduationCap className="h-8 w-8 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-          <p className="text-gray-300">Bowen University Attendance System</p>
-          <p className="text-sm text-gray-400 mt-2">
+          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
+          <p className="text-gray-400">Bowen University Attendance System</p>
+          <p className="text-sm text-gray-500">
             Sign in to access your account
           </p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-glass border border-white/20 p-8">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {/* User Type Selection */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/10 p-6 shadow-2xl">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Account Type Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-3">
                 Account Type
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    setFormData((prev) => ({ ...prev, userType: "student" }))
-                  }
-                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                  onClick={() => handleUserTypeChange("student")}
+                  className={`p-3 rounded-lg border transition-all duration-200 ${
                     formData.userType === "student"
-                      ? "border-green-500 bg-green-500/20 text-white"
-                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-white/5 border-gray-600 text-gray-300 hover:bg-white/10"
                   }`}
                 >
-                  <Users className="h-4 w-4 mx-auto mb-1" />
-                  <span className="text-xs font-medium">Student</span>
+                  <User className="h-4 w-4 mx-auto mb-1" />
+                  <span className="text-sm font-medium">Student</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    setFormData((prev) => ({ ...prev, userType: "lecturer" }))
-                  }
-                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
+                  onClick={() => handleUserTypeChange("lecturer")}
+                  className={`p-3 rounded-lg border transition-all duration-200 ${
                     formData.userType === "lecturer"
-                      ? "border-blue-500 bg-blue-500/20 text-white"
-                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
-                  }`}
-                >
-                  <UserCheck className="h-4 w-4 mx-auto mb-1" />
-                  <span className="text-xs font-medium">Lecturer</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFormData((prev) => ({ ...prev, userType: "admin" }))
-                  }
-                  className={`p-3 rounded-lg border-2 transition-all duration-200 ${
-                    formData.userType === "admin"
-                      ? "border-purple-500 bg-purple-500/20 text-white"
-                      : "border-white/20 bg-white/5 text-gray-300 hover:border-white/30"
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-white/5 border-gray-600 text-gray-300 hover:bg-white/10"
                   }`}
                 >
                   <GraduationCap className="h-4 w-4 mx-auto mb-1" />
-                  <span className="text-xs font-medium">Admin</span>
+                  <span className="text-sm font-medium">Lecturer</span>
                 </button>
               </div>
             </div>
 
+            {/* Email Input */}
             <div>
               <Input
-                label={getIdentifierLabel()}
-                type="email"
+                label="Email Address"
                 name="email"
+                type="email"
                 value={formData.email}
-                onChange={handleChange}
+                onChange={handleInputChange}
+                placeholder={
+                  formData.userType === "student"
+                    ? "Email address (e.g., yourname@student.bowen.edu.ng)"
+                    : "Email address (e.g., yourname@bowen.edu.ng)"
+                }
                 error={errors.email}
-                placeholder={getPlaceholderText()}
                 required
               />
             </div>
 
+            {/* Password Input */}
             <div>
               <div className="relative">
                 <Input
                   label="Password"
-                  type={showPassword ? "text" : "password"}
                   name="password"
+                  type={showPassword ? "text" : "password"}
                   value={formData.password}
-                  onChange={handleChange}
-                  error={errors.password}
+                  onChange={handleInputChange}
                   placeholder="Enter your password"
+                  error={errors.password}
                   required
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-9 text-gray-400 hover:text-white transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-[38px] text-gray-400 hover:text-gray-300"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -192,32 +218,24 @@ const Login = () => {
               </div>
             </div>
 
+            {/* Remember Me & Forgot Password */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center">
+              <label className="flex items-center">
                 <input
-                  id="remember-me"
-                  name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded bg-white/10 border-white/20"
+                  className="h-4 w-4 text-blue-600 bg-white/10 border-gray-600 rounded focus:ring-blue-500"
                 />
-                <label
-                  htmlFor="remember-me"
-                  className="ml-2 block text-sm text-gray-300"
-                >
-                  Remember me
-                </label>
-              </div>
-
-              <div className="text-sm">
-                <a
-                  href="#"
-                  className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  Forgot password?
-                </a>
-              </div>
+                <span className="ml-2 text-sm text-gray-300">Remember me</span>
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Forgot password?
+              </Link>
             </div>
 
+            {/* Submit Button */}
             <Button
               type="submit"
               variant="primary"
@@ -237,53 +255,68 @@ const Login = () => {
               {formData.userType === "student" && (
                 <div>
                   <strong>Students:</strong> Access your attendance records and
-                  class schedules.
+                  mark attendance.
                   <br />
-                  Use your matric number (e.g., BU/CSC/21/0001) or university
-                  email.
+                  Use your university email or matriculation number.
                 </div>
               )}
               {formData.userType === "lecturer" && (
                 <div>
-                  <strong>Lecturers:</strong> Manage class attendance and
-                  student records.
+                  <strong>Lecturers:</strong> Manage courses, student
+                  enrollment, and attendance.
                   <br />
-                  Use your staff ID (e.g., BU/CSC/2024) or university email.
-                </div>
-              )}
-              {formData.userType === "admin" && (
-                <div>
-                  <strong>Administrators:</strong> System-wide management and
-                  analytics.
-                  <br />
-                  Use your admin credentials to access all system features.
+                  You have full administrative access to the system.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Register link - Only show for students */}
-          {formData.userType === "student" && (
-            <p className="mt-6 text-center text-sm text-gray-400">
-              New student at Bowen University?{" "}
-              <Link
-                to="/register"
-                className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                Register here
-              </Link>
-            </p>
-          )}
+          {/* Registration Links */}
+          <div className="mt-6 space-y-3">
+            {formData.userType === "student" && (
+              <p className="text-center text-sm text-gray-400">
+                New student at Bowen University?{" "}
+                <Link
+                  to="/register/student"
+                  className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Register here
+                </Link>
+              </p>
+            )}
 
-          {/* Note for staff */}
-          {(formData.userType === "lecturer" ||
-            formData.userType === "admin") && (
-            <p className="mt-6 text-center text-xs text-gray-500">
-              Staff accounts are created by the IT department.
-              <br />
-              Contact admin if you need assistance.
+            {formData.userType === "lecturer" && (
+              <p className="text-center text-sm text-gray-400">
+                New lecturer at Bowen University?{" "}
+                <Link
+                  to="/register/lecturer"
+                  className="font-medium text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Register here
+                </Link>
+              </p>
+            )}
+          </div>
+
+          {/* Alternative Registration */}
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              {formData.userType === "student"
+                ? "Are you a lecturer?"
+                : "Are you a student?"}{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  handleUserTypeChange(
+                    formData.userType === "student" ? "lecturer" : "student"
+                  )
+                }
+                className="text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Switch here
+              </button>
             </p>
-          )}
+          </div>
         </div>
       </div>
     </div>

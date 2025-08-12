@@ -1,27 +1,44 @@
 import React from "react";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Area,
-  AreaChart,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
-const AttendanceChart = ({ data, type = "line" }) => {
+const AttendanceChart = ({ data, type = "bar" }) => {
+  // Mock data if none provided
+  const chartData =
+    data && data.length > 0
+      ? data
+      : [
+          { course: "CSC 438", present: 10, absent: 2, percentage: 83.3 },
+          { course: "CSC 426", present: 8, absent: 3, percentage: 72.7 },
+          { course: "CSC 412", present: 12, absent: 1, percentage: 92.3 },
+          { course: "CSC 408", present: 9, absent: 2, percentage: 81.8 },
+        ];
+
+  // Pie chart data for overall attendance
+  const pieData = [
+    { name: "Present", value: 85, color: "#10B981" },
+    { name: "Absent", value: 15, color: "#EF4444" },
+  ];
+
+  // Custom tooltip component
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white/10 backdrop-blur-xl rounded-lg p-3 border border-white/20 shadow-lg">
-          <p className="text-white font-medium">{label}</p>
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+          <p className="text-white font-medium">{`${label}`}</p>
           {payload.map((entry, index) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {`${entry.dataKey}: ${entry.value}${
-                entry.dataKey === "attendance" ? "%" : "h"
-              }`}
+              {`${entry.name}: ${entry.value}`}
             </p>
           ))}
         </div>
@@ -30,88 +47,103 @@ const AttendanceChart = ({ data, type = "line" }) => {
     return null;
   };
 
-  if (type === "area") {
+  // Custom grid
+  const CustomGrid = (props) => (
+    <CartesianGrid {...props} stroke="#334155" strokeDasharray="3 3" />
+  );
+
+  if (type === "pie") {
     return (
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data}>
-          <defs>
-            <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="attendanceGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-          <XAxis
-            dataKey="month"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "#9CA3AF", fontSize: 12 }}
-          />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "#9CA3AF", fontSize: 12 }}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Area
-            type="monotone"
-            dataKey="hours"
-            stroke="#3B82F6"
-            fillOpacity={1}
-            fill="url(#hoursGradient)"
-            strokeWidth={2}
-          />
-          <Area
-            type="monotone"
-            dataKey="attendance"
-            stroke="#10B981"
-            fillOpacity={1}
-            fill="url(#attendanceGradient)"
-            strokeWidth={2}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={pieData}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={5}
+              dataKey="value"
+            >
+              {pieData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  return (
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+                      <p className="text-white font-medium">
+                        {payload[0].name}
+                      </p>
+                      <p
+                        className="text-sm"
+                        style={{ color: payload[0].payload.color }}
+                      >
+                        {`${payload[0].value}%`}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+
+        {/* Legend */}
+        <div className="flex justify-center gap-4 mt-4">
+          {pieData.map((item, index) => (
+            <div key={index} className="flex items-center">
+              <div
+                className="w-3 h-3 rounded-full mr-2"
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="text-sm text-gray-300">{item.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-        <XAxis
-          dataKey="month"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#9CA3AF", fontSize: 12 }}
-        />
-        <YAxis
-          axisLine={false}
-          tickLine={false}
-          tick={{ fill: "#9CA3AF", fontSize: 12 }}
-        />
-        <Tooltip content={<CustomTooltip />} />
-        <Line
-          type="monotone"
-          dataKey="hours"
-          stroke="#3B82F6"
-          strokeWidth={3}
-          dot={{ fill: "#3B82F6", strokeWidth: 0, r: 6 }}
-          activeDot={{ r: 8, stroke: "#3B82F6", strokeWidth: 2, fill: "#fff" }}
-        />
-        <Line
-          type="monotone"
-          dataKey="attendance"
-          stroke="#10B981"
-          strokeWidth={3}
-          dot={{ fill: "#10B981", strokeWidth: 0, r: 6 }}
-          activeDot={{ r: 8, stroke: "#10B981", strokeWidth: 2, fill: "#fff" }}
-        />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="h-64 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={chartData}
+          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+        >
+          <XAxis
+            dataKey="course"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "#94A3B8", fontSize: 12 }}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "#94A3B8", fontSize: 12 }}
+          />
+          <CustomGrid />
+          <Tooltip content={<CustomTooltip />} />
+          <Bar
+            dataKey="present"
+            name="Present"
+            fill="#10B981"
+            radius={[4, 4, 0, 0]}
+          />
+          <Bar
+            dataKey="absent"
+            name="Absent"
+            fill="#EF4444"
+            radius={[4, 4, 0, 0]}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 };
 

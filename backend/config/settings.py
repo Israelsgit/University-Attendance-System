@@ -79,7 +79,6 @@ class Settings(BaseSettings):
     # Email Notifications (from your settings)
     LECTURER_EMAIL_NOTIFICATIONS: bool = UniversitySettings.LECTURER_EMAIL_NOTIFICATIONS
     STUDENT_EMAIL_NOTIFICATIONS: bool = UniversitySettings.STUDENT_EMAIL_NOTIFICATIONS
-    ADMIN_EMAIL_NOTIFICATIONS: bool = UniversitySettings.ADMIN_EMAIL_NOTIFICATIONS
     
     # Logging
     LOG_LEVEL: str = "INFO"
@@ -138,61 +137,38 @@ pathlib.Path("uploads/documents").mkdir(exist_ok=True)
 COLLEGE_DEPARTMENTS = UniversitySettings.DEPARTMENT_MAPPINGS
 
 # Department code mappings for student ID generation
-DEPARTMENT_CODES = {
-    "Computer Science": "CSC",
-    "Information Technology": "IFT", 
-    "Cyber Security": "CYS",
-    "Software Engineering": "SWE",
-    "Communication Arts": "COM",
-    "Mass Communication": "MCM",
-    "Electrical and Electronics Engineering": "EEE",
-    "Mechatronics Engineering": "MEC",
-    "Chemistry and Industrial Chemistry": "CHM",
-    "Food Science and Technology": "FST",
-    "Mathematics and Statistics": "MAT",
-    "Physics and Solar Energy": "PHY",
-    "Medicine and Surgery": "MED",
-    "Nursing Science": "NUR",
-    "Public Health": "PHC",
-    "Medical Laboratory Science": "MLS",
-    "Physiotherapy": "PHT",
-    "Nutrition and Dietetics": "NUT",
-    "Anatomy": "ANA",
-    "Accounting & Finance": "ACC",
-    "Political Science": "POL",
-    "Business Administration": "BUS",
-    "Industrial Relations & Personnel Management": "IRP",
-    "International Relations": "INT",
-    "Sociology": "SOC",
-    "Law": "LAW",
-    "Architecture": "ARC",
-    "Surveying and Geoinformatics": "SUR",
-    "English Language": "ENG",
-    "History and International Studies": "HIS",
-    "Philosophy and Religious Studies": "PHL",
-    "Music": "MUS",
-    "Theatre Arts": "THR"
-}
+DEPARTMENT_CODES = UniversitySettings.DEPARTMENT_CODES
 
-def get_departments_by_college(college: str) -> List[str]:
-    """Get departments for a specific college"""
-    return UniversitySettings.get_department_by_college(college)
+# Expose student email domain
+STUDENT_EMAIL_DOMAIN = UniversitySettings.STUDENT_EMAIL_DOMAIN
 
-def get_department_code(department: str) -> str:
-    """Get department code for ID generation"""
-    return DEPARTMENT_CODES.get(department, "GEN")
-
-def is_valid_university_email(email: str) -> bool:
-    """Check if email domain is valid for the university"""
-    return UniversitySettings.is_valid_email_domain(email)
+# Expose additional UniversitySettings methods
+get_departments_by_college = UniversitySettings.get_department_by_college
+get_department_code = UniversitySettings.get_department_code
+is_valid_university_email = UniversitySettings.is_valid_email_domain
+is_student_email = UniversitySettings.is_student_email
+generate_student_id = UniversitySettings.generate_student_id
+generate_staff_id = UniversitySettings.generate_staff_id
+get_all_departments = UniversitySettings.get_all_departments
+validate_matric_number_format = UniversitySettings.validate_matric_number_format
+validate_staff_id_format = UniversitySettings.validate_staff_id_format
+get_user_permissions = UniversitySettings.get_user_permissions
 
 # Export settings for other modules
 __all__ = [
     "settings", 
     "COLLEGE_DEPARTMENTS", 
     "DEPARTMENT_CODES",
+    "STUDENT_EMAIL_DOMAIN",
     "get_departments_by_college",
     "get_department_code", 
     "is_valid_university_email",
+    "is_student_email",
+    "generate_student_id",
+    "generate_staff_id",
+    "get_all_departments",
+    "validate_matric_number_format",
+    "validate_staff_id_format",
+    "get_user_permissions",
     "UniversitySettings"  # Export your original class too
 ]

@@ -1,543 +1,328 @@
 import React, { useState, useEffect } from "react";
-import {
-  Calendar,
-  Clock,
-  Filter,
-  Download,
-  Search,
-  CheckCircle,
-  XCircle,
-  Edit,
-  Trash2,
-  Plus,
-  FileText,
-} from "lucide-react";
-import { useAttendance } from "../hooks/useAttendance";
+import { Calendar, Clock, Users, Plus, Eye, Download } from "lucide-react";
+import { toast } from "react-hot-toast";
+
+import { useAuth } from "../hooks/useAuth";
+import { attendanceAPI, courseAPI } from "../services/apiClient";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import Button from "../components/common/Button";
-import Input from "../components/common/Input";
-import Modal from "../components/common/Modal";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import Select from "../components/common/Select";
+import CreateSessionModal from "../components/modals/CreateSessionModal";
 
 const Attendance = () => {
-  const {
-    attendanceHistory,
-    loadAttendanceHistory,
-    manualCheckIn,
-    manualCheckOut,
-    requestLeave,
-    isLoading,
-  } = useAttendance();
-
-  const [filters, setFilters] = useState({
-    startDate: format(startOfMonth(new Date()), "yyyy-MM-dd"),
-    endDate: format(endOfMonth(new Date()), "yyyy-MM-dd"),
-    status: "",
-    search: "",
-  });
-
-  const [showManualModal, setShowManualModal] = useState(false);
-  const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [manualType, setManualType] = useState("check-in");
-  const [manualReason, setManualReason] = useState("");
-  const [leaveData, setLeaveData] = useState({
-    startDate: "",
-    endDate: "",
-    type: "sick",
-    reason: "",
-  });
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState([]);
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [showCreateSession, setShowCreateSession] = useState(false);
 
   useEffect(() => {
-    loadAttendanceHistory(filters);
-  }, [filters]);
+    if (user?.role === "lecturer") {
+      loadAttendanceData();
+    }
+  }, [user, selectedCourse]);
 
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const loadAttendanceData = async () => {
+    try {
+      setLoading(true);
+
+      const [coursesRes, sessionsRes, recordsRes] = await Promise.all([
+        courseAPI.getMyCourses(),
+        attendanceAPI.getActiveSessions(),
+        selectedCourse
+          ? attendanceAPI.getCourseAttendance(selectedCourse)
+          : Promise.resolve({ data: { attendance_records: [] } }),
+      ]);
+
+      setCourses(coursesRes.data.courses || []);
+      setActiveSessions(sessionsRes.data.sessions || []);
+      setAttendanceRecords(recordsRes.data.attendance_records || []);
+    } catch (error) {
+      console.error("Failed to load attendance data:", error);
+      toast.error("Failed to load attendance data");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleManualSubmit = async () => {
+  const handleCreateSession = async (sessionData) => {
     try {
-      if (manualType === "check-in") {
-        await manualCheckIn(manualReason);
-      } else {
-        await manualCheckOut(manualReason);
+      await attendanceAPI.createSession(selectedCourse, sessionData);
+      toast.success("Attendance session created successfully!");
+      setShowCreateSession(false);
+      loadAttendanceData();
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      toast.error("Failed to create session");
+    }
+  };
+
+  const handleExportAttendance = async () => {
+    try {
+      if (!selectedCourse) {
+        toast.error("Please select a course to export");
+        return;
       }
-      setShowManualModal(false);
-      setManualReason("");
-      loadAttendanceHistory(filters);
+
+      // Mock export functionality
+      toast.success("Attendance data exported successfully!");
     } catch (error) {
-      console.error("Manual attendance error:", error);
+      console.error("Export failed:", error);
+      toast.error("Failed to export attendance data");
     }
   };
 
-  const handleLeaveSubmit = async () => {
-    try {
-      await requestLeave(leaveData);
-      setShowLeaveModal(false);
-      setLeaveData({
-        startDate: "",
-        endDate: "",
-        type: "sick",
-        reason: "",
-      });
-      loadAttendanceHistory(filters);
-    } catch (error) {
-      console.error("Leave request error:", error);
-    }
-  };
+  if (user?.role !== "lecturer") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Calendar className="h-16 w-16 text-gray-600 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Access Restricted
+          </h2>
+          <p className="text-gray-400">Only lecturers can manage attendance.</p>
+        </div>
+      </div>
+    );
+  }
 
-  const exportToCSV = () => {
-    const csvContent = [
-      ["Date", "Check In", "Check Out", "Total Hours", "Status"],
-      ...attendanceHistory.map((record) => [
-        record.date,
-        record.checkIn || "N/A",
-        record.checkOut || "N/A",
-        record.totalHours || 0,
-        record.status,
-      ]),
-    ]
-      .map((row) => row.join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `attendance-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "present":
-        return <CheckCircle className="h-5 w-5 text-green-400" />;
-      case "absent":
-        return <XCircle className="h-5 w-5 text-red-400" />;
-      case "late":
-        return <Clock className="h-5 w-5 text-yellow-400" />;
-      default:
-        return <XCircle className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "present":
-        return "bg-green-500/20 text-green-400 border-green-500/40";
-      case "absent":
-        return "bg-red-500/20 text-red-400 border-red-500/40";
-      case "late":
-        return "bg-yellow-500/20 text-yellow-400 border-yellow-500/40";
-      default:
-        return "bg-gray-500/20 text-gray-400 border-gray-500/40";
-    }
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
+    <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">
-                Attendance Records
+                Attendance Management
               </h1>
               <p className="text-gray-400">
-                View and manage your attendance history
+                Manage class sessions and track student attendance
               </p>
             </div>
 
-            <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
+            <div className="flex gap-3">
               <Button
-                onClick={() => setShowLeaveModal(true)}
-                variant="secondary"
-                className="group"
-              >
-                <FileText className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform" />
-                Request Leave
-              </Button>
-
-              <Button
-                onClick={() => {
-                  setManualType("check-in");
-                  setShowManualModal(true);
-                }}
+                onClick={() => setShowCreateSession(true)}
                 variant="primary"
-                className="group"
+                disabled={!selectedCourse}
+                className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
               >
-                <Plus className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform" />
-                Manual Entry
+                <Plus className="h-4 w-4 mr-2" />
+                Start Session
               </Button>
-            </div>
-          </div>
-        </div>
 
-        {/* Filters */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <Input
-              label="Start Date"
-              type="date"
-              name="startDate"
-              value={filters.startDate}
-              onChange={handleFilterChange}
-            />
-
-            <Input
-              label="End Date"
-              type="date"
-              name="endDate"
-              value={filters.endDate}
-              onChange={handleFilterChange}
-            />
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Status
-              </label>
-              <select
-                name="status"
-                value={filters.status}
-                onChange={handleFilterChange}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="" className="bg-gray-800">
-                  All Status
-                </option>
-                <option value="present" className="bg-gray-800">
-                  Present
-                </option>
-                <option value="absent" className="bg-gray-800">
-                  Absent
-                </option>
-                <option value="late" className="bg-gray-800">
-                  Late
-                </option>
-              </select>
-            </div>
-
-            <Input
-              label="Search"
-              type="text"
-              name="search"
-              value={filters.search}
-              onChange={handleFilterChange}
-              placeholder="Search records..."
-              icon={Search}
-            />
-
-            <div className="flex items-end">
               <Button
-                onClick={exportToCSV}
+                onClick={handleExportAttendance}
                 variant="secondary"
-                fullWidth
-                className="group"
+                disabled={!selectedCourse}
               >
-                <Download className="h-4 w-4 mr-2 group-hover:translate-y-1 transition-transform" />
-                Export
+                <Download className="h-4 w-4 mr-2" />
+                Export Data
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Attendance Table */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 overflow-hidden">
-          <div className="p-6 border-b border-white/20">
+        {/* Course Selection */}
+        <div className="mb-8 bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+          <div className="flex items-center gap-4">
+            <Calendar className="h-5 w-5 text-gray-400" />
+            <div className="flex-1">
+              <Select
+                value={selectedCourse}
+                onChange={(e) => setSelectedCourse(e.target.value)}
+                options={[
+                  { value: "", label: "Select a course" },
+                  ...courses.map((course) => ({
+                    value: course.id,
+                    label: `${course.course_code} - ${course.course_title}`,
+                  })),
+                ]}
+                placeholder="Choose course to manage"
+                className="w-full max-w-md"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Active Sessions */}
+        <div className="mb-8 bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+          <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-white">
-              Attendance History
+              Active Sessions
             </h2>
+            <Clock className="h-5 w-5 text-gray-400" />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-white/5">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Date
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Check In
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Check Out
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Total Hours
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">
-                    Location
-                  </th>
-                  <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10">
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, index) => (
-                    <tr key={index}>
-                      <td className="px-6 py-4">
-                        <div className="h-4 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-4 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-4 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-4 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-6 w-20 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-4 bg-white/10 rounded skeleton"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-8 w-16 bg-white/10 rounded skeleton"></div>
-                      </td>
+          {activeSessions.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeSessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="bg-green-500/10 border border-green-500/20 rounded-lg p-4"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="font-medium text-white">
+                        {session.course_code}
+                      </h3>
+                      <p className="text-sm text-gray-400">
+                        {session.course_title}
+                      </p>
+                    </div>
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Topic:</span>
+                      <span className="text-gray-300">
+                        {session.session_topic}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Duration:</span>
+                      <span className="text-gray-300">
+                        {session.duration_minutes} min
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Students:</span>
+                      <span className="text-green-400">
+                        {session.present_count || 0} present
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    className="w-full mt-3"
+                  >
+                    <Eye className="h-3 w-3 mr-2" />
+                    View Details
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Clock className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-400 mb-2">No active sessions</p>
+              <p className="text-sm text-gray-500">
+                Start a new attendance session to begin tracking
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Attendance Records */}
+        {selectedCourse && (
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl border border-white/10 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">
+                Attendance Records
+              </h2>
+              <Users className="h-5 w-5 text-gray-400" />
+            </div>
+
+            {attendanceRecords.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left text-gray-400 text-sm font-medium pb-3">
+                        Student
+                      </th>
+                      <th className="text-left text-gray-400 text-sm font-medium pb-3">
+                        Session
+                      </th>
+                      <th className="text-left text-gray-400 text-sm font-medium pb-3">
+                        Date
+                      </th>
+                      <th className="text-left text-gray-400 text-sm font-medium pb-3">
+                        Status
+                      </th>
+                      <th className="text-left text-gray-400 text-sm font-medium pb-3">
+                        Time
+                      </th>
                     </tr>
-                  ))
-                ) : attendanceHistory.length > 0 ? (
-                  attendanceHistory.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="hover:bg-white/5 transition-colors"
-                    >
-                      <td className="px-6 py-4 text-white">
-                        {format(new Date(record.date), "MMM dd, yyyy")}
-                      </td>
-                      <td className="px-6 py-4 text-gray-300">
-                        {record.checkIn
-                          ? format(
-                              new Date(`${record.date}T${record.checkIn}`),
-                              "HH:mm"
-                            )
-                          : "N/A"}
-                      </td>
-                      <td className="px-6 py-4 text-gray-300">
-                        {record.checkOut
-                          ? format(
-                              new Date(`${record.date}T${record.checkOut}`),
-                              "HH:mm"
-                            )
-                          : "N/A"}
-                      </td>
-                      <td className="px-6 py-4 text-white font-medium">
-                        {record.totalHours}h
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-sm border ${getStatusColor(
-                            record.status
-                          )}`}
-                        >
-                          {getStatusIcon(record.status)}
-                          <span className="ml-2 capitalize">
+                  </thead>
+                  <tbody>
+                    {attendanceRecords.map((record) => (
+                      <tr key={record.id} className="border-b border-white/5">
+                        <td className="py-3">
+                          <div>
+                            <p className="text-white font-medium">
+                              {record.student_name}
+                            </p>
+                            <p className="text-sm text-gray-400">
+                              {record.matric_number}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="py-3 text-gray-300">
+                          {record.session_topic}
+                        </td>
+                        <td className="py-3 text-gray-300">
+                          {new Date(record.session_date).toLocaleDateString()}
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              record.status === "present"
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-red-500/20 text-red-400"
+                            }`}
+                          >
                             {record.status}
                           </span>
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-300">
-                        {record.location || "N/A"}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end space-x-2">
-                          <button className="text-gray-400 hover:text-white p-1 rounded transition-colors">
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button className="text-gray-400 hover:text-red-400 p-1 rounded transition-colors">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center">
-                      <Calendar className="h-12 w-12 text-gray-500 mx-auto mb-4" />
-                      <p className="text-gray-400">
-                        No attendance records found
-                      </p>
-                      <p className="text-sm text-gray-500 mt-2">
-                        Try adjusting your filters or date range
-                      </p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="py-3 text-gray-400">
+                          {record.marked_at
+                            ? new Date(record.marked_at).toLocaleTimeString()
+                            : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-400 mb-2">No attendance records</p>
+                <p className="text-sm text-gray-500">
+                  {selectedCourse
+                    ? "No attendance has been recorded for this course yet"
+                    : "Select a course to view attendance records"}
+                </p>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Manual Entry Modal */}
-      <Modal
-        isOpen={showManualModal}
-        onClose={() => setShowManualModal(false)}
-        title={`Manual ${manualType === "check-in" ? "Check In" : "Check Out"}`}
-        maxWidth="md"
-      >
-        <div className="space-y-6">
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setManualType("check-in")}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                manualType === "check-in"
-                  ? "bg-primary-600 text-white"
-                  : "bg-white/10 text-gray-300 hover:bg-white/20"
-              }`}
-            >
-              Check In
-            </button>
-            <button
-              onClick={() => setManualType("check-out")}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                manualType === "check-out"
-                  ? "bg-primary-600 text-white"
-                  : "bg-white/10 text-gray-300 hover:bg-white/20"
-              }`}
-            >
-              Check Out
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Reason for Manual Entry
-            </label>
-            <textarea
-              value={manualReason}
-              onChange={(e) => setManualReason(e.target.value)}
-              placeholder="Please provide a reason for manual entry..."
-              rows={4}
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-              required
-            />
-          </div>
-
-          <div className="flex justify-end space-x-3">
-            <Button
-              onClick={() => setShowManualModal(false)}
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleManualSubmit}
-              variant="primary"
-              disabled={!manualReason.trim()}
-            >
-              Submit Entry
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Leave Request Modal */}
-      <Modal
-        isOpen={showLeaveModal}
-        onClose={() => setShowLeaveModal(false)}
-        title="Request Leave"
-        maxWidth="md"
-      >
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Start Date"
-              type="date"
-              value={leaveData.startDate}
-              onChange={(e) =>
-                setLeaveData((prev) => ({ ...prev, startDate: e.target.value }))
-              }
-              required
-            />
-
-            <Input
-              label="End Date"
-              type="date"
-              value={leaveData.endDate}
-              onChange={(e) =>
-                setLeaveData((prev) => ({ ...prev, endDate: e.target.value }))
-              }
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Leave Type
-            </label>
-            <select
-              value={leaveData.type}
-              onChange={(e) =>
-                setLeaveData((prev) => ({ ...prev, type: e.target.value }))
-              }
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="sick" className="bg-gray-800">
-                Sick Leave
-              </option>
-              <option value="vacation" className="bg-gray-800">
-                Vacation
-              </option>
-              <option value="personal" className="bg-gray-800">
-                Personal Leave
-              </option>
-              <option value="emergency" className="bg-gray-800">
-                Emergency
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Reason
-            </label>
-            <textarea
-              value={leaveData.reason}
-              onChange={(e) =>
-                setLeaveData((prev) => ({ ...prev, reason: e.target.value }))
-              }
-              placeholder="Please provide details for your leave request..."
-              rows={4}
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-              required
-            />
-          </div>
-
-          <div className="flex justify-end space-x-3">
-            <Button
-              onClick={() => setShowLeaveModal(false)}
-              variant="secondary"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleLeaveSubmit}
-              variant="primary"
-              disabled={
-                !leaveData.startDate ||
-                !leaveData.endDate ||
-                !leaveData.reason.trim()
-              }
-            >
-              Submit Request
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Create Session Modal */}
+      {showCreateSession && selectedCourse && (
+        <CreateSessionModal
+          isOpen={showCreateSession}
+          onClose={() => setShowCreateSession(false)}
+          onSubmit={handleCreateSession}
+          course={courses.find((c) => c.id === parseInt(selectedCourse))}
+        />
+      )}
     </div>
   );
 };

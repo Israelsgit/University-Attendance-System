@@ -190,7 +190,7 @@ class FaceNotRecognizedError(FaceRecognitionError):
     """Face not recognized"""
     
     def __init__(self, confidence: float = None):
-        message = "Face not recognized. Please try again or contact administrator"
+        message = "Face not recognized. Please try again or contact support"
         details = {}
         
         if confidence is not None:
@@ -360,7 +360,7 @@ class ModelNotLoadedError(FaceRecognitionError):
     
     def __init__(self):
         super().__init__(
-            message="Face recognition model is not loaded. Please contact administrator",
+            message="Face recognition model is not loaded. Please contact support",
             error_code="MODEL_NOT_LOADED"
         )
 

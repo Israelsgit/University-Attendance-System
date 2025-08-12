@@ -10,16 +10,10 @@ export const authService = {
         user_type: credentials.user_type,
       });
 
-      // Create FormData for the login request
-      const formData = new FormData();
-      formData.append("email", credentials.email);
-      formData.append("password", credentials.password);
-      formData.append("user_type", credentials.user_type || "student");
-
-      const response = await api.post("/auth/login", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+      const response = await api.post("/auth/login", {
+        email: credentials.email,
+        password: credentials.password,
+        user_type: credentials.user_type || "student",
       });
 
       console.log("✅ AuthService: Login successful", response.data);

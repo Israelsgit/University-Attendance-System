@@ -130,50 +130,8 @@ def init_database():
     Initialize database with default admin user
     """
     try:
-        from api.models.user import User, UserRole
-        from api.utils.security import get_password_hash
-        from datetime import datetime
-        
-        db = SessionLocal()
-        
-        try:
-            # Check if any users exist
-            user_count = db.query(User).count()
-            
-            if user_count == 0:
-                logger.info("Creating default admin user...")
-                
-                # Create default admin user
-                admin_user = User(
-                    full_name="System Administrator",
-                    email="admin@bowen.edu.ng",
-                    staff_id="ADMIN001",
-                    hashed_password=get_password_hash("admin123"),
-                    university=settings.UNIVERSITY_NAME,
-                    college="Administration",
-                    department="Information Technology",
-                    role=UserRole.ADMIN,
-                    employment_date=datetime.now(),
-                    is_active=True,
-                    is_verified=True,
-                    is_face_registered=True
-                )
-                
-                db.add(admin_user)
-                db.commit()
-                
-                logger.info("✅ Default admin user created successfully")
-                logger.info("📧 Admin login: admin@bowen.edu.ng / admin123")
-            else:
-                logger.info(f"ℹ️ Database already has {user_count} users")
-                
-        except Exception as e:
-            logger.error(f"❌ Error creating admin user: {e}")
-            db.rollback()
-            raise
-        finally:
-            db.close()
-        
+        # (No admin user should be created)
+        pass
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
         raise

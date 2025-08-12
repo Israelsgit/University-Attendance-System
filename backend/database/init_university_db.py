@@ -49,23 +49,6 @@ def create_sample_data(engine):
             logger.info("Sample data already exists, skipping creation")
             return
         
-        # Create Admin User
-        admin_user = User(
-            full_name="System Administrator",
-            email=f"admin@{UniversitySettings.UNIVERSITY_EMAIL_DOMAIN}",
-            staff_id=UniversitySettings.generate_staff_id(department_code="IT"),
-            hashed_password=get_password_hash("admin123"),
-            university=UniversitySettings.UNIVERSITY_NAME,
-            college="Administration",
-            department="Information Technology",
-            role=UserRole.ADMIN,
-            employment_date=datetime.now(),
-            is_active=True,
-            is_verified=True,
-            is_face_registered=True
-        )
-        db.add(admin_user)
-        
         # Create Sample Lecturers
         lecturers_data = [
             {
@@ -407,7 +390,6 @@ def create_sample_data(engine):
         db.commit()
         
         logger.info("✅ Sample data created successfully")
-        logger.info(f"📧 Admin login: admin@{UniversitySettings.UNIVERSITY_EMAIL_DOMAIN} / admin123")
         logger.info(f"📧 Lecturer login: j.adebayo@{UniversitySettings.UNIVERSITY_EMAIL_DOMAIN} / lecturer123")
         logger.info(f"📧 Student login: o.adebisi@student.{UniversitySettings.UNIVERSITY_EMAIL_DOMAIN} / student123")
         
