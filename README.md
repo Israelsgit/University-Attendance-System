@@ -99,24 +99,6 @@ python main.py
 python api/app.py
 ```
 
-## 📱 Screenshots
-
-### Login Page
-
-Modern glass morphism design with gradient backgrounds and smooth animations.
-
-### Dashboard
-
-Real-time attendance tracking with interactive charts and analytics.
-
-### Face Recognition
-
-Live camera feed with face detection overlay and real-time processing.
-
-### Profile Management
-
-Comprehensive user profile with photo upload and settings.
-
 ## 🛠️ Technology Stack
 
 ### Frontend
