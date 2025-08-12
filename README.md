@@ -257,18 +257,3 @@ docker-compose up --build
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- OpenCV team for computer vision capabilities
-- FaceNet authors for face recognition model
-- Tailwind CSS for the beautiful styling system
-- React team for the amazing frontend framework
-
-## 📞 Support
-
-For support, email support@attendanceai.com or join our Discord server.
-
----
-
-**Made with ❤️ by [Your Name]**
